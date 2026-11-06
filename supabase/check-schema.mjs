@@ -173,6 +173,9 @@ check('host cannot delete audit rows', await as('authenticated', atk, () => db.q
 check('victim cannot see attacker rows', await as('authenticated', noa, () => q(`select count(*)::int from records where owner_id = $1`, [atk])), 0)
 const viaRpc = await as('authenticated', atk, () => create(bk('et1', '2030-01-12T08:00:00.000Z', '2030-01-12T08:30:00.000Z', { attendee: { ...att(), whatsappOptIn: true } })))
 check('invitee opt-in through the RPC kept (signed-in invitee)', [viaRpc.ok, viaRpc.booking?.attendee.whatsappOptIn], [true, true])
+const upsert = (id) => db.query(`insert into records(id, owner_id, kind, data) select id, owner_id, kind, data || '{"notes":"edited"}' from records where id = $1
+  on conflict (id) do update set data = excluded.data`, [id])
+check('host re-saving a booking (upsert) keeps the invitee opt-in', await as('authenticated', owner, () => upsert(viaRpc.booking.id)).then(() => q(`select (data->'attendee'->>'whatsappOptIn') || (data->>'notes') from records where id = $1`, [viaRpc.booking.id])), 'trueedited')
 check('anon co-host injection on attacker type dropped', (await as('anon', null, () => create({ ...bk('aet', '2030-01-12T09:00:00.000Z', '2030-01-12T09:30:00.000Z'), ownerId: atk, coHostIds: [noa] }))).booking.coHostIds, [])
 // public data (finding 9)
 const pub = await q(`select public_profile('host')`)

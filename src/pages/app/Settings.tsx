@@ -104,6 +104,10 @@ export default function Settings() {
               <input className="input ltr" value={u.phone} onChange={(e) => set('phone', e.target.value)} />
             </Field>
           </div>
+          <label className="row" style={{ gap: 10 }}>
+            <Toggle checked={!!u.showContact} onChange={(v) => set('showContact', v)} />
+            <span className="small">{L('להציג מייל וטלפון בדפים הציבוריים (למשל כפתור WhatsApp למוזמנים)', 'Show email and phone on public pages (e.g. a WhatsApp button for invitees)')}</span>
+          </label>
         </div>
       </section>
 

@@ -133,7 +133,7 @@ export default function Developer() {
                 <Toggle checked={h.active} onChange={(v) => store.saveKind('webhook', { ...h, active: v })} />
                 <button className="icon-btn" title={L('בדיקה', 'Test')} onClick={async () => {
                   const r = await deliverWebhook(h.url, h.secret, 'ping', { hello: 'slotwise' })
-                  await store.saveKind('webhook_delivery', { id: uid(), ownerId: me.id, webhookId: h.id, event: 'booking.created', status: r.status, code: r.code, attempts: 1, at: nowISO(), payload: { ping: true } })
+                  if (store.mode === 'local') await store.saveKind('webhook_delivery', { id: uid(), ownerId: me.id, webhookId: h.id, event: 'booking.created', status: r.status, code: r.code, attempts: 1, at: nowISO(), payload: { ping: true } })
                   toast(r.status === 'failed' ? L('השליחה נכשלה', 'Delivery failed') : L('נשלח', 'Sent'), r.status === 'failed')
                 }}><Icon name="arrow" size={14} /></button>
                 <button className="icon-btn" onClick={() => setHook(h)}><Icon name="edit" size={14} /></button>
@@ -159,6 +159,11 @@ export default function Developer() {
                 </tbody>
               </table>
             </details>
+          )}
+          {me.workflowSecret && (
+            <Field label={L('סוד חתימה לתהליכים (Webhook בתוך תהליך)', 'Workflow webhook signing secret')}>
+              <div className="row" style={{ gap: 6 }}><div className="code-block grow">{me.workflowSecret}</div><button className="icon-btn" onClick={() => copy(me.workflowSecret!)}><Icon name="copy" size={14} /></button></div>
+            </Field>
           )}
           <p className="tiny muted">{L('מהדפדפן: אם השרת המקבל לא מאפשר CORS, נשלחת גרסה אטומה שבה החתימה בגוף ההודעה. עם Edge Functions השליחה מלאה עם ניסיונות חוזרים.', 'From the browser: if the receiver does not allow CORS, an opaque request carries the signature in the body. With Edge Functions delivery is full, with retries.')}</p>
         </div>

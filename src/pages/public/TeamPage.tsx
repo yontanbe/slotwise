@@ -62,7 +62,7 @@ export function TeamBooking() {
   if (!owner || !members.length) return <NotFound />
   return (
     <PublicShell>
-      <Booker profile={owner} eventType={et} team={{ mode: et.schedulingType === 'collective' ? 'collective' : 'round_robin', members }} />
+      <Booker key={et.id} profile={owner} eventType={et} team={{ mode: et.schedulingType === 'collective' ? 'collective' : 'round_robin', members }} />
     </PublicShell>
   )
 }

@@ -16,7 +16,7 @@ export default function BookingPage() {
   const store = useStore()
   const names = username.split('+').map((x) => x.trim()).filter(Boolean).slice(0, 5)
   const { data, loading } = useLoad(async () => {
-    const profiles = (await Promise.all(names.map((n) => store.getPublicProfile(n)))).filter((p): p is PublicProfile => !!p)
+    const profiles = (await Promise.all(names.map((n, i) => (i === 0 ? store.getPublicEventType(n, slug) : store.getPublicProfile(n))))).filter((p): p is PublicProfile => !!p)
     if (profiles.length !== names.length || !profiles.length) return null
     const main = profiles[0]
     const et = main.eventTypes.find((e) => e.slug === slug)
@@ -32,6 +32,7 @@ export default function BookingPage() {
   return (
     <PublicShell>
       <Booker
+        key={et.id}
         profile={data.main}
         eventType={et}
         personal={data.personal ?? undefined}

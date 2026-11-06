@@ -31,6 +31,8 @@ interface DB {
 }
 
 const KEY = 'slotwise:db'
+/** bump when the demo seed changes so returning visitors get the new sample data */
+const SEED_VERSION = 3
 const empty = (): DB => ({ version: 1, users: [], eventTypes: [], schedules: [], bookings: [], polls: [], links: [], busy: {}, outbox: [], kinds: {} })
 
 /** In-memory fallback when localStorage is blocked (private mode, previews). */
@@ -57,7 +59,7 @@ function write(db: DB) {
 
 export function seedDemo(force = false) {
   const db = read()
-  if (!force && db.users.some((u) => u.id === 'demo-host')) return
+  if (!force && db.users.some((u) => u.id === 'demo-host') && (db as DB & { seedVersion?: number }).seedVersion === SEED_VERSION) return
   const s = buildSeed()
   const ids = new Set(s.users.map((u) => u.id))
   const others = <T extends { ownerId: string }>(arr: T[]) => arr.filter((x) => !ids.has(x.ownerId))
@@ -74,7 +76,8 @@ export function seedDemo(force = false) {
     polls: [...others(db.polls), ...s.polls],
     busy: { ...db.busy, ...Object.fromEntries(s.users.map((u) => [u.id, []])) },
     kinds,
-  })
+    seedVersion: SEED_VERSION,
+  } as DB)
 }
 
 function publicPoll(p: Poll): Poll {
@@ -339,13 +342,19 @@ export class LocalStore implements Store {
   }
 
   // ---------- public ----------
-  private profileFor(db: DB, user: User, redirectedFrom?: string): PublicProfile {
+  private profileFor(db: DB, user: User, redirectedFrom?: string, includeSlug?: string): PublicProfile {
     return {
       user: toPublicUser(user),
-      eventTypes: db.eventTypes.filter((e) => e.ownerId === user.id && !e.teamId).sort((a, b) => a.position - b.position),
+      eventTypes: db.eventTypes.filter((e) => e.ownerId === user.id && !e.teamId && (!e.hidden || e.slug === includeSlug)).sort((a, b) => a.position - b.position),
       schedules: db.schedules.filter((s) => s.ownerId === user.id),
       redirectedFrom,
     }
+  }
+  async getPublicEventType(username: string, slug: string) {
+    const db = read()
+    const n = username.toLowerCase()
+    const u = db.users.find((x) => x.username === n) ?? db.users.find((x) => x.previousUsernames.includes(n))
+    return u ? this.profileFor(db, u, u.username === n ? undefined : n, slug) : null
   }
   async getPublicProfile(username: string) {
     const db = read()
@@ -484,7 +493,7 @@ export class LocalStore implements Store {
     const db = read()
     const link = db.links.find((l) => l.token === token)
     const user = link && db.users.find((u) => u.id === link.ownerId)
-    return link && user ? { link, profile: this.profileFor(db, user) } : null
+    return link && user ? { link, profile: { ...this.profileFor(db, user), eventTypes: db.eventTypes.filter((e) => e.ownerId === user.id) } } : null
   }
 
   async confirmAttendance(token: string) {

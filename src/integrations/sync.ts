@@ -206,13 +206,13 @@ async function syncOnce(store: Store, user: User, opts: { pullBusy?: boolean }):
             withMeet: b.location.type === 'meet',
             requestId: b.id,
           })
-          b = await patch(b.id, () => ({ google: { eventId: r.id, meetUrl: r.hangoutLink, syncedAt: nowISO() } }))
+          b = await patch(b.id, () => ({ google: { eventId: r.id, meetUrl: r.hangoutLink, syncedAt: nowISO(), calendarId: cal } }))
           report.eventsCreated++
         } else if (b.status === 'accepted' && b.google?.eventId && !b.google.syncedAt) {
-          await patchEvent(cal, b.google.eventId, { start: b.start, end: b.end })
+          await patchEvent(b.google.calendarId || cal, b.google.eventId, { start: b.start, end: b.end })
           b = await patch(b.id, (f) => ({ google: { ...f.google, syncedAt: nowISO() } }))
         } else if ((b.status === 'cancelled' || b.status === 'rejected') && b.google?.eventId) {
-          await deleteEvent(cal, b.google.eventId)
+          await deleteEvent(b.google.calendarId || cal, b.google.eventId)
           b = await patch(b.id, (f) => ({ google: { ...f.google, eventId: undefined, syncedAt: nowISO() } }))
           report.eventsDeleted++
         }
@@ -301,7 +301,7 @@ async function syncOnce(store: Store, user: User, opts: { pullBusy?: boolean }):
         for (const ev of evs) {
           for (const w of webhooks.filter((x) => x.active && x.events.includes(ev) && x.createdAt <= b!.createdAt)) {
             const r = await deliverWebhook(w.url, w.secret, ev, webhookPayload(b))
-            await store.saveKind('webhook_delivery', { id: uid(), ownerId: user.id, webhookId: w.id, event: ev, status: r.status, code: r.code, attempts: 1, at: nowISO(), payload: { bookingId: b.id } })
+            if (store.mode === 'local') await store.saveKind('webhook_delivery', { id: uid(), ownerId: user.id, webhookId: w.id, event: ev, status: r.status, code: r.code, attempts: 1, at: nowISO(), payload: { bookingId: b.id } })
             report.webhooks++
           }
         }

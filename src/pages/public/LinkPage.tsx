@@ -22,7 +22,7 @@ export default function LinkPage() {
         {L('קישור אישי וחד פעמי', 'Personal single use link')}
         {link.label ? ` · ${link.label}` : ''}
       </div>
-      <Booker profile={profile} eventType={et} linkToken={token} />
+      <Booker key={et.id} profile={profile} eventType={et} linkToken={token} />
     </PublicShell>
   )
 }

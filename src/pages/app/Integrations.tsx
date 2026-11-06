@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth, useMe } from '../../auth/AuthProvider'
 import PageHead from '../../components/PageHead'
 import { Field, Icon, Toggle, useToast } from '../../components/ui'
 import { useLoad, useStore } from '../../data/StoreProvider'
 import { useI18n } from '../../i18n'
-import { connectGoogle, disconnectGoogle, getUserEmail, hasScope, isGoogleConnected, listCalendars, SCOPES, type GCalendar } from '../../integrations/google'
+import { GOOGLE_EVENT, connectGoogle, disconnectGoogle, getUserEmail, hasScope, isGoogleConnected, listCalendars, SCOPES, type GCalendar } from '../../integrations/google'
 import { runSync, type SyncReport } from '../../integrations/sync'
 import { getConfig, setConfig } from '../../lib/config'
 import { BackendModal } from '../Login'
@@ -22,6 +22,17 @@ export default function Integrations() {
   const [syncing, setSyncing] = useState(false)
   const [backend, setBackend] = useState(false)
   const outbox = useLoad(() => store.listOutbox(me.id), [me.id])
+  // keep the connected state honest (a 401 anywhere clears the token) and load calendars on return visits
+  useEffect(() => {
+    const on = () => setConnected(isGoogleConnected())
+    window.addEventListener(GOOGLE_EVENT, on)
+    const iv = setInterval(on, 30_000)
+    if (isGoogleConnected()) listCalendars().then(setCals).catch(() => {})
+    return () => {
+      window.removeEventListener(GOOGLE_EVENT, on)
+      clearInterval(iv)
+    }
+  }, [])
   const g = me.google ?? { conflictCalendars: ['primary'], destinationCalendar: 'primary', sendWithGmail: true }
 
   const saveG = async (patch: Partial<typeof g>) => {
@@ -48,6 +59,7 @@ export default function Integrations() {
     setSyncing(true)
     const r = await runSync(store, me, { pullBusy: true })
     setReport(r)
+    setConnected(isGoogleConnected())
     setSyncing(false)
   }
 
@@ -88,14 +100,7 @@ export default function Integrations() {
               <button className="btn btn-line btn-sm" onClick={syncNow} disabled={syncing}><Icon name="refresh" size={14} /> {syncing ? L('מסנכרן…', 'Syncing…') : L('סנכרון עכשיו', 'Sync now')}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { disconnectGoogle(); setConnected(false) }}>{L('ניתוק', 'Disconnect')}</button>
             </div>
-            {report && (
-              <div className="notice small">
-                <div>
-                  {L('נוצרו', 'Created')} {report.eventsCreated} · {L('נמחקו', 'Deleted')} {report.eventsDeleted} · {L('מיילים', 'Emails')} {report.emailed} · {L('בלוקים תפוסים', 'Busy blocks')} {report.busyBlocks ?? '—'}
-                  {report.errors.length > 0 && <div style={{ color: 'var(--danger)' }}>{report.errors.slice(0, 3).join(' · ')}</div>}
-                </div>
-              </div>
-            )}
+
             <div className="grid-2">
               <div className="stack" style={{ ['--gap' as string]: '8px' }}>
                 <div className="row between">
@@ -123,6 +128,14 @@ export default function Integrations() {
               </div>
             </div>
           </>
+        )}
+        {report && (
+          <div className="notice small">
+            <div>
+              {L('נוצרו', 'Created')} {report.eventsCreated} · {L('נמחקו', 'Deleted')} {report.eventsDeleted} · {L('מיילים', 'Emails')} {report.emailed} · {L('בלוקים תפוסים', 'Busy blocks')} {report.busyBlocks ?? '—'}
+              {report.errors.length > 0 && <div style={{ color: 'var(--danger)' }}>{report.errors.slice(0, 3).join(' · ')}</div>}
+            </div>
+          </div>
         )}
         <p className="tiny muted">
           {L(

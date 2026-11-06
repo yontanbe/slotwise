@@ -164,6 +164,9 @@ export class SupabaseStore implements Store {
   }
 
   // ---------- public ----------
+  getPublicEventType(username: string, slug: string) {
+    return this.rpc<PublicProfile | null>('public_event_type', { p_username: username, p_slug: slug })
+  }
   getPublicProfile(username: string) {
     return this.rpc<PublicProfile | null>('public_profile', { p_username: username })
   }

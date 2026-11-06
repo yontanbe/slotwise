@@ -86,6 +86,7 @@ export async function connectGoogle(withGmail: boolean): Promise<TokenState> {
         const t: TokenState = { access_token: r.access_token, expires_at: Date.now() + (r.expires_in ?? 3600) * 1000, scope: r.scope ?? scope }
         try {
           sessionStorage.setItem(TK, JSON.stringify(t))
+          notifyGoogle()
         } catch {
           /* ignore */
         }
@@ -100,6 +101,7 @@ export async function connectGoogle(withGmail: boolean): Promise<TokenState> {
 export function disconnectGoogle() {
   const t = getToken()
   sessionStorage.removeItem(TK)
+  notifyGoogle()
   if (!t) return
   // revoke at Google too; after a reload GIS is not loaded yet, so load it first
   if (window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(t.access_token)
@@ -115,6 +117,7 @@ async function gfetch<T>(url: string, init: RequestInit = {}): Promise<T> {
   })
   if (res.status === 401) {
     sessionStorage.removeItem(TK)
+    notifyGoogle()
     throw new Error('expired')
   }
   if (res.status === 204) return undefined as T
@@ -296,4 +299,14 @@ export async function getInviteeBusy(timeMin: string, timeMax: string): Promise<
   if (!res.ok) throw new Error(`google_${res.status}`)
   const j = (await res.json()) as { calendars: Record<string, { busy: { start: string; end: string }[] }> }
   return Object.values(j.calendars).flatMap((c) => c.busy || []).map((b) => ({ start: new Date(b.start).toISOString(), end: new Date(b.end).toISOString() }))
+}
+
+/** Fired whenever the Google token appears or disappears, so screens can update their state. */
+export const GOOGLE_EVENT = 'slotwise:google'
+export function notifyGoogle() {
+  try {
+    window.dispatchEvent(new Event(GOOGLE_EVENT))
+  } catch {
+    /* non-browser */
+  }
 }

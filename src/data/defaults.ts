@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon'
 import { nowISO, slugify, token, uid } from '../lib/id'
-import type { Booking, EventType, PersonalLink, Poll, RoutingForm, Schedule, Team, User, Workflow } from '../lib/types'
+import type { Booking, EventType, PersonalLink, Poll, RoutingForm, Schedule, Team, TeamMembership, User, Workflow } from '../lib/types'
 import { WORKFLOW_PRESETS } from '../../supabase/functions/_shared/workflows'
 
 export const BRAND_COLORS = ['#E4572E', '#14213D', '#7FA087', '#D9A441', '#5B6CA8', '#B5536B', '#2F7F7A']
@@ -95,7 +95,7 @@ export function newEventType(ownerId: string, scheduleId: string, title = 'פג�
 export interface SeedData {
   user: User
   users: User[]
-  kinds: { workflow: Workflow[]; routing_form: RoutingForm[]; personal_link: PersonalLink[]; team: Team[] }
+  kinds: { workflow: Workflow[]; routing_form: RoutingForm[]; personal_link: PersonalLink[]; team: Team[]; team_member: TeamMembership[] }
   schedules: Schedule[]
   eventTypes: EventType[]
   bookings: Booking[]
@@ -111,6 +111,7 @@ export function buildSeed(): SeedData {
   user.timezone = 'Asia/Jerusalem'
   user.phone = '0521234567'
   user.onboarded = true
+  user.showContact = true
 
   const work = newSchedule(user.id, 'שעות עבודה', 'Asia/Jerusalem')
   const evenings = newSchedule(user.id, 'ערבים', 'Asia/Jerusalem')
@@ -300,7 +301,13 @@ export function buildSeed(): SeedData {
   return {
     user,
     users: [user, noa],
-    kinds: { workflow: [workflow], routing_form: [form], personal_link: [personal], team: [team] },
+    kinds: {
+      workflow: [workflow],
+      routing_form: [form],
+      personal_link: [personal],
+      team: [team],
+      team_member: [user.id, noa.id].map((id) => ({ id: `${team.id}:${id}`, ownerId: id, teamId: team.id, userId: id, accepted: true })),
+    },
     schedules: [work, evenings, noaWork],
     eventTypes: [intro, consult, workshop, secret, noaIntro, rr, collective],
     bookings,

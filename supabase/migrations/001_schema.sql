@@ -103,11 +103,15 @@ end $$;
 --  * team_member: id = teamId:userId and userId = owner_id
 create or replace function public._records_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_role text := coalesce(current_setting('role', true), '');
+declare v_role text := coalesce(current_setting('role', true), ''); v_old jsonb; v_old_id text;
 begin
   if v_role not in ('anon', 'authenticated') or coalesce(current_setting('slotwise.rpc', true), '') = 'on' then return new; end if;
-  if tg_op = 'INSERT' or new.id is distinct from old.id or new.data -> 'id' is distinct from old.data -> 'id'
-     or new.data -> 'ownerId' is distinct from old.data -> 'ownerId' or new.owner_id is distinct from old.owner_id then
+  -- compare with the stored row; for INSERT that is the row an upsert (on conflict do update) will hit
+  if tg_op = 'UPDATE' then v_old := old.data; v_old_id := old.id;
+  else select data, id into v_old, v_old_id from records where id = new.id and owner_id = new.owner_id;
+  end if;
+  if v_old is null or new.id is distinct from v_old_id or new.data -> 'id' is distinct from v_old -> 'id'
+     or new.data -> 'ownerId' is distinct from v_old -> 'ownerId' or (tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id) then
     if new.data ->> 'id' is not null and new.data ->> 'id' <> new.id then
       raise exception using errcode = '42501', message = 'records: data.id must equal the row id';
     end if;
@@ -116,13 +120,12 @@ begin
     end if;
   end if;
   if new.kind = 'booking' then
-    if (tg_op = 'INSERT' or new.data -> 'coHostIds' is distinct from old.data -> 'coHostIds'
-        or new.data -> 'eventTypeId' is distinct from old.data -> 'eventTypeId')
+    if (v_old is null or new.data -> 'coHostIds' is distinct from v_old -> 'coHostIds'
+        or new.data -> 'eventTypeId' is distinct from v_old -> 'eventTypeId')
        and not public._cohosts_ok(new.data ->> 'eventTypeId', new.owner_id::text, new.data -> 'coHostIds') then
       raise exception using errcode = '42501', message = 'records: coHostIds not allowed for this event type';
     end if;
-    if new.data -> 'attendee' ->> 'whatsappOptIn' = 'true'
-       and (tg_op = 'INSERT' or coalesce(old.data -> 'attendee' ->> 'whatsappOptIn', 'false') <> 'true') then
+    if new.data -> 'attendee' ->> 'whatsappOptIn' = 'true' and coalesce(v_old -> 'attendee' ->> 'whatsappOptIn', 'false') <> 'true' then
       new.data := jsonb_set(new.data, '{attendee,whatsappOptIn}', 'false'::jsonb);
     end if;
   elsif new.kind = 'team_member' then

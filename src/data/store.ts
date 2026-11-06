@@ -2,6 +2,7 @@ import { DateTime } from 'luxon'
 import type { BookingLite } from '../lib/availability'
 import type {
   ApiKey,
+  TeamMembership,
   PersonalLink,
   RoutingForm,
   RoutingResponse,
@@ -50,6 +51,7 @@ export interface KindMap {
   webhook: Webhook
   webhook_delivery: WebhookDelivery
   api_key: ApiKey
+  team_member: TeamMembership
 }
 export type Kind = keyof KindMap
 
@@ -153,6 +155,8 @@ export interface Store {
 
   // public side (no login)
   getPublicProfile(username: string): Promise<PublicProfile | null>
+  /** profile bundle that also contains the event type with this slug, even when hidden */
+  getPublicEventType(username: string, slug: string): Promise<PublicProfile | null>
   getPublicBusy(ownerId: string, from: ISO, to: ISO): Promise<{ bookings: BookingLite[]; busy: BusyBlock[] }>
   createBooking(input: NewBookingInput): Promise<CreateResult>
   getBookingByToken(token: string): Promise<BookingBundle | null>
@@ -170,7 +174,8 @@ export interface Store {
 
 export function toPublicUser(u: User): PublicUser {
   const { id, name, username, bio, avatarUrl, timezone, locale, weekStart, timeFormat, brandColor, shabbat, phone, email, defaultScheduleId, outOfOffice, travel } = u
-  return { id, name, username, bio, avatarUrl, timezone, locale, weekStart, timeFormat, brandColor, shabbat, phone, email, defaultScheduleId, outOfOffice: outOfOffice || [], travel: travel || [] }
+  const show = !!u.showContact
+  return { id, name, username, bio, avatarUrl, timezone, locale, weekStart, timeFormat, brandColor, shabbat, phone: show ? phone : '', email: show ? email : '', defaultScheduleId, outOfOffice: outOfOffice || [], travel: travel || [] }
 }
 
 /** Occurrence starts for a recurring series, stepping in the host timezone so DST keeps the wall clock time. */

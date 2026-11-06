@@ -94,6 +94,14 @@ async function bookIntro(page: Page, email = INVITEE, guests: string[] = GUESTS,
 /** Clicks "Sync now" until a real (non skipped) run reports back. */
 async function syncNow(page: Page, opts: { allowError?: boolean } = {}) {
   const btn = page.locator('.integ button', { hasText: /סנכרון עכשיו|מסנכרן/ })
+  if (opts.allowError) {
+    // the run that hits the expired token: the page reports the error and switches to "not connected"
+    await expect(btn).toBeEnabled()
+    await btn.click()
+    const report = page.locator('.integ .notice', { hasText: /expired|google_/ })
+    await expect(report).toBeVisible({ timeout: 10_000 })
+    return report.innerText()
+  }
   for (let i = 0; i < 20; i++) {
     await expect(btn).toBeEnabled()
     await btn.click()
@@ -528,14 +536,13 @@ test('6. a 401 clears the token, keeps the last Google busy blocks, and reconnec
 })
 
 test('6b. the integrations page notices the expiry in place', async ({ page }) => {
-  test.fail(true, 'known bug: Integrations.tsx keeps `connected` state after gfetch clears the token on 401')
   await mock.seedHostToken()
   await enterDemo(page)
   await openIntegrations(page)
   await expect(stamp(page)).toHaveText('מחובר')
   mock.validTokens.clear()
   await syncNow(page, { allowError: true })
-  await expect(stamp(page)).toHaveText('לא מחובר', { timeout: 3000 })
+  await expect(stamp(page)).toHaveText('לא מחובר', { timeout: 8000 })
 })
 
 test('7. invitee calendar overlay: read-only scope, clash marks, nothing stored', async ({ page }) => {

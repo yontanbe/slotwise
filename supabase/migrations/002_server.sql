@@ -34,6 +34,16 @@ create index if not exists records_audit_at
   on public.records (owner_id, (data ->> 'at') desc)
   where kind = 'audit';
 
+-- per owner reminder quota (sendReminder counts audit actions reminder.email / reminder.whatsapp of the last 24h)
+create index if not exists records_audit_action
+  on public.records (owner_id, (data ->> 'action'), (data ->> 'at'))
+  where kind = 'audit';
+
+-- Security model reminder: webhook_delivery, audit and idempotency rows are written only with the
+-- service role key. schema.sql's RLS policies let hosts read but not write them, and the records_guard
+-- trigger checks client writes (see docs/SERVER.md, Security model). Run schema.sql again before this
+-- file when upgrading an existing project so those policies and the trigger are in place.
+
 -- ---------- scheduler: pg_cron + pg_net -> functions/v1/cron every 5 minutes ----------
 --
 -- 1. Store the service role key in Vault once (SQL editor, NOT in this file):

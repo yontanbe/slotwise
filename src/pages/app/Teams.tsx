@@ -20,7 +20,8 @@ export default function Teams() {
   const data = useLoad(async () => {
     const teams = await store.listMyTeams(me.id)
     const bundles = await Promise.all(teams.map((t) => store.getTeam(t.slug)))
-    return { teams, bundles }
+    const mine = await store.listKind('team_member', me.id)
+    return { teams, bundles, mine }
   }, [me.id])
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
@@ -33,6 +34,7 @@ export default function Teams() {
     if (await store.getTeam(s)) return toast(L('הכתובת תפוסה', 'Slug taken'), true)
     const t: Team = { id: uid(), ownerId: me.id, name: name.trim(), slug: s, bio: '', members: [{ userId: me.id, role: 'owner', accepted: true }], createdAt: nowISO() }
     await store.saveKind('team', t)
+    await store.saveKind('team_member', { id: `${t.id}:${me.id}`, ownerId: me.id, teamId: t.id, userId: me.id, accepted: true })
     setCreating(false)
     setName('')
     setSlug('')
@@ -43,7 +45,7 @@ export default function Teams() {
     if (t.members.some((m) => m.userId === u.id)) return toast(L('כבר בצוות', 'Already a member'), true)
     await store.saveKind('team', { ...t, members: [...t.members, { userId: u.id, role: 'member', accepted: true }] })
     setAdding({ ...adding, [t.id]: '' })
-    toast(L('נוסף', 'Added'))
+    toast(L('נוסף. החבר/ה צריך/ה לאשר את ההזמנה בדף הצוותים שלו/ה.', 'Added. They need to accept the invite on their Teams page.'))
   }
   const newTeamEvent = async (t: Team, mode: 'round_robin' | 'collective') => {
     const et = newEventType(me.id, me.defaultScheduleId, mode === 'collective' ? L('פגישת צוות', 'Team meeting') : L('שיחה עם הצוות', 'Talk to the team'), 30)
@@ -64,6 +66,19 @@ export default function Teams() {
         actions={<button className="btn btn-accent" onClick={() => setCreating(true)}><Icon name="plus" size={15} /> {L('צוות חדש', 'New team')}</button>}
       />
       {teams.length === 0 && !data.loading && <Empty img="poll" title={L('עוד אין צוותים', 'No teams yet')} />}
+      {teams
+        .filter((t) => !(data.data?.mine ?? []).some((m) => m.teamId === t.id && m.accepted))
+        .map((t) => (
+          <div key={'inv-' + t.id} className="notice accent">
+            <Icon name="users" />
+            <div className="grow">
+              {L(`הוזמנת לצוות "${t.name}". אחרי האישור אנשים יוכלו לקבוע איתך דרך הצוות.`, `You were invited to "${t.name}". Once you accept, people can book you through the team.`)}
+            </div>
+            <button className="btn btn-accent btn-sm" onClick={async () => { await store.saveKind('team_member', { id: `${t.id}:${me.id}`, ownerId: me.id, teamId: t.id, userId: me.id, accepted: true }); toast(L('הצטרפת לצוות', 'You joined the team')) }}>
+              {L('אישור', 'Accept')}
+            </button>
+          </div>
+        ))}
       {teams.map((t, i) => {
         const b = data.data?.bundles[i]
         const isAdmin = t.ownerId === me.id || t.members.some((m) => m.userId === me.id && m.role !== 'member')

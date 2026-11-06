@@ -283,7 +283,8 @@ export function NewBookingModal({ open, onClose, eventTypes }: { open: boolean; 
       eventTypeId: et.id,
       start: s.toUTC().toISO()!,
       end: s.plus({ minutes: duration }).toUTC().toISO()!,
-      attendee: { name, email, phone, timezone: me.timezone, locale, whatsappOptIn: !!phone },
+      // opt-in can only come from the invitee (the server refuses host-set opt-in)
+      attendee: { name, email, phone, timezone: me.timezone, locale, whatsappOptIn: store.mode === 'local' && !!phone },
       guests: [],
       notes: '',
       answers: {},
