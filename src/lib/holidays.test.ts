@@ -30,3 +30,21 @@ describe('shabbatBlocks', () => {
     expect(b).toHaveLength(0)
   })
 })
+
+describe('shabbatBlocks classification (review regressions)', () => {
+  const only = { enabled: false, city: 'Jerusalem', blockHolidays: true, showHebrewDate: false }
+  it('a Chanukah Shabbat is not a holiday', () => {
+    expect(shabbatBlocks(only, '2026-12-03T00:00:00Z', '2026-12-07T00:00:00Z')).toHaveLength(0)
+    const both = shabbatBlocks({ ...only, enabled: true }, '2026-12-03T00:00:00Z', '2026-12-07T00:00:00Z')
+    expect(both.map((b) => b.kind)).toEqual(['shabbat'])
+  })
+  it('Shabbat before Purim and before a fast is not a holiday', () => {
+    expect(shabbatBlocks(only, '2027-03-25T00:00:00Z', '2027-03-29T00:00:00Z')).toHaveLength(0)
+    expect(shabbatBlocks(only, '2027-08-12T00:00:00Z', '2027-08-16T00:00:00Z')).toHaveLength(0)
+  })
+  it('Shemini Atzeret on Saturday is blocked as a holiday', () => {
+    const b = shabbatBlocks(only, '2026-10-01T00:00:00Z', '2026-10-05T00:00:00Z')
+    expect(b).toHaveLength(1)
+    expect(b[0].kind).toBe('holiday')
+  })
+})

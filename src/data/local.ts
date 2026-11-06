@@ -1,7 +1,21 @@
+import { DateTime } from 'luxon'
+import { computeSlots } from '../lib/availability'
+import { shabbatBlocks } from '../lib/holidays'
 import { nowISO, token as newToken, uid } from '../lib/id'
-import type { Booking, BusyBlock, EventType, OneOffLink, OutboxMessage, Poll, Schedule, User } from '../lib/types'
+import type { Booking, BusyBlock, EventType, OneOffLink, OutboxMessage, Poll, RoutingResponse, Schedule, Team, User } from '../lib/types'
 import { buildSeed } from './defaults'
-import { ACTIVE, toPublicUser, type CreateResult, type ExportBundle, type NewBookingInput, type PublicProfile, type Store } from './store'
+import {
+  ACTIVE,
+  seriesStarts,
+  toPublicUser,
+  type CreateResult,
+  type ExportBundle,
+  type Kind,
+  type KindMap,
+  type NewBookingInput,
+  type PublicProfile,
+  type Store,
+} from './store'
 
 interface DB {
   version: 1
@@ -13,10 +27,11 @@ interface DB {
   links: OneOffLink[]
   busy: Record<string, BusyBlock[]>
   outbox: OutboxMessage[]
+  kinds: { [K in Kind]?: KindMap[K][] }
 }
 
 const KEY = 'slotwise:db'
-const empty = (): DB => ({ version: 1, users: [], eventTypes: [], schedules: [], bookings: [], polls: [], links: [], busy: {}, outbox: [] })
+const empty = (): DB => ({ version: 1, users: [], eventTypes: [], schedules: [], bookings: [], polls: [], links: [], busy: {}, outbox: [], kinds: {} })
 
 /** In-memory fallback when localStorage is blocked (private mode, previews). */
 let memory: DB | null = null
@@ -44,16 +59,66 @@ export function seedDemo(force = false) {
   const db = read()
   if (!force && db.users.some((u) => u.id === 'demo-host')) return
   const s = buildSeed()
-  const others = (arr: { ownerId: string }[]) => arr.filter((x) => x.ownerId !== s.user.id)
+  const ids = new Set(s.users.map((u) => u.id))
+  const others = <T extends { ownerId: string }>(arr: T[]) => arr.filter((x) => !ids.has(x.ownerId))
+  const kinds = { ...db.kinds }
+  for (const [k, items] of Object.entries(s.kinds) as [Kind, { ownerId: string }[]][]) {
+    ;(kinds as Record<string, unknown[]>)[k] = [...others(((db.kinds as Record<string, { ownerId: string }[]>)[k] || [])), ...items]
+  }
   write({
     ...db,
-    users: [...db.users.filter((u) => u.id !== s.user.id), s.user],
-    schedules: [...(others(db.schedules) as Schedule[]), ...s.schedules],
-    eventTypes: [...(others(db.eventTypes) as EventType[]), ...s.eventTypes],
-    bookings: [...(others(db.bookings) as Booking[]), ...s.bookings],
-    polls: [...(others(db.polls) as Poll[]), ...s.polls],
-    busy: { ...db.busy, [s.user.id]: [] },
+    users: [...db.users.filter((u) => !ids.has(u.id)), ...s.users],
+    schedules: [...others(db.schedules), ...s.schedules],
+    eventTypes: [...others(db.eventTypes), ...s.eventTypes],
+    bookings: [...others(db.bookings), ...s.bookings],
+    polls: [...others(db.polls), ...s.polls],
+    busy: { ...db.busy, ...Object.fromEntries(s.users.map((u) => [u.id, []])) },
+    kinds,
   })
+}
+
+function publicPoll(p: Poll): Poll {
+  return { ...p, voters: p.voters.map((v) => ({ ...v, id: '', email: '' })) }
+}
+
+/**
+ * Same availability rules the server enforces: the start must be one of the slots the engine
+ * offers for every host (working hours, overrides, notice, window, limits, buffers, Shabbat, OOO).
+ */
+export function slotOffered(db: { users: User[]; schedules: Schedule[]; bookings: Booking[]; busy: Record<string, BusyBlock[]> }, et: EventType, hostIds: string[], start: string, end: string, ignoreId?: string): boolean {
+  const duration = Math.round((Date.parse(end) - Date.parse(start)) / 60000)
+  if (!et.durations.includes(duration)) return false
+  for (const hid of hostIds) {
+    const u = db.users.find((x) => x.id === hid)
+    if (!u) return false
+    const schedId = et.ownerId === hid ? et.scheduleId : u.defaultScheduleId
+    const schedule = db.schedules.find((x) => x.id === schedId) ?? db.schedules.find((x) => x.ownerId === hid)
+    if (!schedule) return false
+    const from = new Date(Date.parse(start) - 60000).toISOString()
+    const to = new Date(Date.parse(start) + 60000).toISOString()
+    const ooo = (u.outOfOffice || []).map((o) => ({
+      start: DateTime.fromISO(o.start, { zone: u.timezone }).startOf('day').toUTC().toISO()!,
+      end: DateTime.fromISO(o.end, { zone: u.timezone }).plus({ days: 1 }).startOf('day').toUTC().toISO()!,
+    }))
+    const slots = computeSlots({
+      eventType: et,
+      schedule,
+      duration,
+      from,
+      to,
+      now: new Date().toISOString(),
+      busy: db.busy[hid] || [],
+      bookings: db.bookings
+        .filter((b) => (b.ownerId === hid || (b.coHostIds || []).includes(hid)) && ACTIVE.includes(b.status))
+        .map((b) => ({ id: b.id, eventTypeId: b.eventTypeId, start: b.start, end: b.end })),
+      blocked: [...shabbatBlocks(u.shabbat, from, to), ...ooo],
+      ignoreBookingId: ignoreId,
+      weekStart: u.weekStart,
+      travel: u.travel,
+    })
+    if (!slots.some((x) => Date.parse(x.start) === Date.parse(start))) return false
+  }
+  return true
 }
 
 const overlaps = (a: { start: string; end: string }, b: { start: string; end: string }) => a.start < b.end && a.end > b.start
@@ -69,7 +134,16 @@ export function checkCreate(
   if (user.blockedEmails.some((b) => b && (b.toLowerCase() === email || b.toLowerCase() === domain || b.toLowerCase() === '@' + domain)))
     return { ok: false, error: 'blocked' }
   if (input.override) return null
-  const active = bookings.filter((b) => b.ownerId === user.id && ACTIVE.includes(b.status) && b.id !== ctx.ignoreId)
+  const hosts = [input.ownerId, ...(input.coHostIds || [])]
+  const involves = (b: Booking) => hosts.includes(b.ownerId) || (b.coHostIds || []).some((h) => hosts.includes(h))
+  const active = bookings.filter((b) => involves(b) && ACTIVE.includes(b.status) && b.id !== ctx.ignoreId)
+  const lim = eventType.perInviteeLimit
+  if (lim && lim.count > 0) {
+    const win = lim.days * 864e5
+    const t = Date.parse(input.start)
+    const mine = active.filter((b) => b.eventTypeId === eventType.id && b.attendee.email.toLowerCase() === email && Math.abs(Date.parse(b.start) - t) < win)
+    if (mine.length >= lim.count) return { ok: false, error: 'limit' }
+  }
   if (eventType.seats) {
     const same = active.filter((b) => b.eventTypeId === eventType.id && b.start === input.start)
     if (same.length >= eventType.seats) return { ok: false, error: 'full' }
@@ -102,6 +176,18 @@ export function makeBooking(input: NewBookingInput, eventType: EventType): Booki
     utm: input.utm,
     emailsSent: [],
     createdAt: nowISO(),
+    coHostIds: input.coHostIds?.length ? input.coHostIds : undefined,
+    teamId: input.teamId,
+    personalLinkId: input.personalLinkId,
+    routingResponseId: input.routingResponseId,
+    payment: eventType.price && eventType.price.amount > 0
+      ? {
+          status: 'unpaid',
+          amount: eventType.price.mode === 'deposit' && eventType.price.depositAmount ? eventType.price.depositAmount : eventType.price.amount,
+          currency: eventType.price.currency,
+          link: eventType.price.paymentLink || undefined,
+        }
+      : undefined,
   }
 }
 
@@ -169,7 +255,10 @@ export class LocalStore implements Store {
     })
   }
   async listBookings(ownerId: string) {
-    return read().bookings.filter((b) => b.ownerId === ownerId)
+    return read().bookings.filter((b) => b.ownerId === ownerId || (b.coHostIds || []).includes(ownerId))
+  }
+  async getBooking(id: string) {
+    return read().bookings.find((b) => b.id === id) ?? null
   }
   async saveBooking(b: Booking) {
     this.mutate((db) => this.upsert(db.bookings, b))
@@ -253,7 +342,7 @@ export class LocalStore implements Store {
   private profileFor(db: DB, user: User, redirectedFrom?: string): PublicProfile {
     return {
       user: toPublicUser(user),
-      eventTypes: db.eventTypes.filter((e) => e.ownerId === user.id).sort((a, b) => a.position - b.position),
+      eventTypes: db.eventTypes.filter((e) => e.ownerId === user.id && !e.teamId).sort((a, b) => a.position - b.position),
       schedules: db.schedules.filter((s) => s.ownerId === user.id),
       redirectedFrom,
     }
@@ -271,7 +360,7 @@ export class LocalStore implements Store {
     const span = { start: from, end: to }
     return {
       bookings: db.bookings
-        .filter((b) => b.ownerId === ownerId && ACTIVE.includes(b.status) && overlaps(b, span))
+        .filter((b) => (b.ownerId === ownerId || (b.coHostIds || []).includes(ownerId)) && ACTIVE.includes(b.status) && overlaps(b, span))
         .map((b) => ({ id: b.id, eventTypeId: b.eventTypeId, start: b.start, end: b.end })),
       busy: (db.busy[ownerId] || []).filter((b) => overlaps(b, span)),
     }
@@ -281,20 +370,37 @@ export class LocalStore implements Store {
     const user = db.users.find((u) => u.id === input.ownerId)
     const et = db.eventTypes.find((e) => e.id === input.eventTypeId)
     if (!user || !et) return { ok: false, error: 'not_found' }
+    // team event types may be booked on any listed host
+    if (et.ownerId !== user.id && !(et.hosts || []).some((h) => h.userId === user.id)) return { ok: false, error: 'not_found' }
     let link: OneOffLink | undefined
     if (input.linkToken) {
       link = db.links.find((l) => l.token === input.linkToken)
       if (!link) return { ok: false, error: 'not_found' }
       if (link.usedBookingId || (link.expiresAt && link.expiresAt < nowISO())) return { ok: false, error: 'used' }
     }
-    const err = checkCreate(input, { user, eventType: et, bookings: db.bookings, busy: db.busy[user.id] || [] })
-    if (err) return err
-    const booking = makeBooking(input, et)
-    db.bookings.push(booking)
-    if (link) link.usedBookingId = booking.id
+    const hosts = [user.id, ...(input.coHostIds || [])]
+    const busy = hosts.flatMap((h) => db.busy[h] || [])
+    const count = et.recurring && input.count && input.count > 1 ? Math.min(input.count, et.recurring.maxCount) : 1
+    const occurrences = count > 1 ? seriesStarts(input.start, input.end, et.recurring!.freq, count, user.timezone) : [{ start: input.start, end: input.end }]
+    const created: Booking[] = []
+    const seriesId = count > 1 ? uid() : undefined
+    for (const [i, occ] of occurrences.entries()) {
+      const one = { ...input, ...occ }
+      const err = checkCreate(one, { user, eventType: et, bookings: [...db.bookings, ...created], busy })
+      if (err) return err
+      if (!input.override && !slotOffered({ ...db, bookings: [...db.bookings, ...created] }, et, hosts, occ.start, occ.end)) return { ok: false, error: 'conflict' }
+      const b = makeBooking(one, et)
+      if (seriesId) {
+        b.recurringId = seriesId
+        b.recurringIndex = i
+      }
+      created.push(b)
+    }
+    db.bookings.push(...created)
+    if (link) link.usedBookingId = created[0].id
     write(db)
     this.emit()
-    return { ok: true, booking }
+    return { ok: true, booking: created[0] }
   }
   async getBookingByToken(token: string) {
     const db = read()
@@ -338,6 +444,7 @@ export class LocalStore implements Store {
     }
     const err = checkCreate(input, { user, eventType: et, bookings: db.bookings, busy: db.busy[user.id] || [], ignoreId: old.id })
     if (err) return err
+    if (!slotOffered(db, et, [user.id, ...(old.coHostIds || [])], start, end, old.id)) return { ok: false, error: 'conflict' }
     const nb = makeBooking(input, et)
     nb.rescheduledFromId = old.id
     nb.rescheduleReason = reason
@@ -356,17 +463,20 @@ export class LocalStore implements Store {
     const db = read()
     const poll = db.polls.find((p) => p.id === id)
     const user = poll && db.users.find((u) => u.id === poll.ownerId)
-    return poll && user ? { poll, user: toPublicUser(user) } : null
+    return poll && user ? { poll: publicPoll(poll), user: toPublicUser(user) } : null
   }
+  /** Voters are matched only by their secret id (kept in their browser), never by email. */
   async votePoll(id: string, voter: Poll['voters'][number]) {
+    if (!voter.id || voter.id.length < 12 || !voter.name.trim()) return null
     let out: Poll | null = null
     this.mutate((db) => {
       const p = db.polls.find((x) => x.id === id)
       if (!p || p.status !== 'open') return
-      const i = p.voters.findIndex((v) => v.id === voter.id || (voter.email && v.email.toLowerCase() === voter.email.toLowerCase()))
-      if (i >= 0) p.voters[i] = { ...voter, id: p.voters[i].id }
-      else p.voters.push(voter)
-      out = p
+      const clean = { ...voter, name: voter.name.trim().slice(0, 80), votes: p.options.map((_, i) => (voter.votes[i] === 'yes' || voter.votes[i] === 'maybe' ? voter.votes[i] : 'no')) }
+      const i = p.voters.findIndex((v) => v.id === voter.id)
+      if (i >= 0) p.voters[i] = clean
+      else p.voters.push(clean)
+      out = publicPoll(p)
     })
     return out
   }
@@ -376,6 +486,76 @@ export class LocalStore implements Store {
     const user = link && db.users.find((u) => u.id === link.ownerId)
     return link && user ? { link, profile: this.profileFor(db, user) } : null
   }
+
+  async confirmAttendance(token: string) {
+    let out: Booking | null = null
+    this.mutate((db) => {
+      const b = db.bookings.find((x) => x.token === token)
+      if (!b || b.status !== 'accepted' || b.end < nowISO()) return
+      b.reconfirmedAt = nowISO()
+      b.history.push({ at: nowISO(), action: 'reconfirmed', by: 'invitee' })
+      out = b
+    })
+    return out
+  }
+
+  // ---------- generic collections ----------
+  async listKind<K extends Kind>(kind: K, ownerId: string): Promise<KindMap[K][]> {
+    return ((read().kinds[kind] || []) as KindMap[K][]).filter((x) => (x as { ownerId: string }).ownerId === ownerId)
+  }
+  async saveKind<K extends Kind>(kind: K, item: KindMap[K]) {
+    this.mutate((db) => {
+      const arr = ((db.kinds[kind] as KindMap[K][] | undefined) ?? []) as (KindMap[K] & { id: string })[]
+      this.upsert(arr, item as KindMap[K] & { id: string })
+      ;(db.kinds as Record<string, unknown>)[kind] = kind === 'webhook_delivery' ? arr.slice(-300) : arr
+    })
+  }
+  async deleteKind(kind: Kind, id: string) {
+    this.mutate((db) => {
+      ;(db.kinds as Record<string, { id: string }[]>)[kind] = ((db.kinds as Record<string, { id: string }[]>)[kind] || []).filter((x) => x.id !== id)
+    })
+  }
+  async listMyTeams(userId: string) {
+    return ((read().kinds.team || []) as Team[]).filter((t) => t.ownerId === userId || t.members.some((m) => m.userId === userId))
+  }
+  async findUserByUsername(username: string) {
+    const u = read().users.find((x) => x.username === username.toLowerCase())
+    return u ? toPublicUser(u) : null
+  }
+  async getPersonalLink(username: string, slug: string) {
+    const db = read()
+    const u = db.users.find((x) => x.username === username.toLowerCase())
+    if (!u) return null
+    return (db.kinds.personal_link || []).find((l) => l.ownerId === u.id && l.slug === slug.toLowerCase()) ?? null
+  }
+  async getRoutingForm(username: string, slug: string) {
+    const db = read()
+    const u = db.users.find((x) => x.username === username.toLowerCase())
+    if (!u) return null
+    const f = (db.kinds.routing_form || []).find((x) => x.ownerId === u.id && x.slug === slug.toLowerCase())
+    if (!f) return null
+    const { responses: _r, ...form } = f
+    void _r
+    return { form, profile: this.profileFor(db, u) }
+  }
+  async submitRouting(formId: string, response: RoutingResponse) {
+    this.mutate((db) => {
+      const f = (db.kinds.routing_form || []).find((x) => x.id === formId)
+      if (f) f.responses = [...f.responses, response].slice(-500)
+    })
+  }
+  async getTeam(slug: string) {
+    const db = read()
+    const team = (db.kinds.team || []).find((t) => t.slug === slug.toLowerCase())
+    if (!team) return null
+    const memberIds = [team.ownerId, ...team.members.filter((m) => m.accepted).map((m) => m.userId)]
+    const members = [...new Set(memberIds)]
+      .map((id) => db.users.find((u) => u.id === id))
+      .filter((u): u is User => !!u)
+      .map((u) => this.profileFor(db, u))
+    return { team, members, eventTypes: db.eventTypes.filter((e) => e.teamId === team.id) }
+  }
+
 }
 
 export function localFindUserByEmail(email: string): User | null {

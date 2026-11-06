@@ -17,6 +17,10 @@ import Integrations from './pages/app/Integrations'
 import PollEditor from './pages/app/PollEditor'
 import Polls from './pages/app/Polls'
 import Settings from './pages/app/Settings'
+import Workflows from './pages/app/Workflows'
+import RoutingForms from './pages/app/RoutingForms'
+import Teams from './pages/app/Teams'
+import Developer from './pages/app/Developer'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
@@ -25,6 +29,8 @@ import LinkPage from './pages/public/LinkPage'
 import ManageBooking from './pages/public/ManageBooking'
 import PollVote from './pages/public/PollVote'
 import Profile from './pages/public/Profile'
+import RoutingPage from './pages/public/RoutingPage'
+import { TeamBooking, TeamProfile } from './pages/public/TeamPage'
 
 function ScrollTop() {
   const { pathname } = useLocation()
@@ -76,11 +82,18 @@ export default function App() {
                   <Route path="insights" element={<Insights />} />
                   <Route path="integrations" element={<Integrations />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="workflows" element={<Workflows />} />
+                  <Route path="routing" element={<RoutingForms />} />
+                  <Route path="teams" element={<Teams />} />
+                  <Route path="developers" element={<Developer />} />
                   <Route path="*" element={<Navigate to="/app" replace />} />
                 </Route>
                 <Route path="/b/:token" element={<ManageBooking />} />
                 <Route path="/p/:id" element={<PollVote />} />
                 <Route path="/d/:token" element={<LinkPage />} />
+                <Route path="/team/:slug" element={<TeamProfile />} />
+                <Route path="/team/:slug/:et" element={<TeamBooking />} />
+                <Route path="/:username/forms/:slug" element={<RoutingPage />} />
                 <Route path="/:username" element={<Profile />} />
                 <Route path="/:username/:slug" element={<BookingPage />} />
               </Routes>

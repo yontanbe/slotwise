@@ -37,3 +37,9 @@ export const isSupabaseMode = () => {
   const c = getConfig()
   return !!(c.supabaseUrl && c.supabaseAnonKey)
 }
+
+/** Base URL of the Supabase Edge Functions, when a backend is connected. */
+export const functionsUrl = () => {
+  const c = getConfig()
+  return c.supabaseUrl ? `${c.supabaseUrl.replace(/\/$/, '')}/functions/v1` : ''
+}

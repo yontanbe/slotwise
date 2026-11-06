@@ -41,6 +41,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
   const [cfgOpen, setCfgOpen] = useState(false)
+  const [code, setCode] = useState('')
   const next = params.get('next') || '/app'
 
   useEffect(() => {
@@ -96,7 +97,23 @@ export default function Login() {
             </div>
           )}
 
-          {sent ? (
+          {auth.status === 'mfa' ? (
+            <form
+              className="stack"
+              style={{ ['--gap' as string]: '12px' }}
+              onSubmit={async (e) => {
+                e.preventDefault()
+                const err = await auth.verifyMfa(code.trim())
+                if (err) toast(err, true)
+              }}
+            >
+              <Field label={L('קוד מאפליקציית האימות', 'Code from your authenticator app')}>
+                <input className="input ltr mono" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+              </Field>
+              <button className="btn btn-lg btn-block" disabled={code.length !== 6}>{L('אימות', 'Verify')}</button>
+              <button type="button" className="link small" onClick={auth.signOut}>{L('יציאה', 'Sign out')}</button>
+            </form>
+          ) : sent ? (
             <div className="notice accent">
               <Icon name="mail" />
               <div>{L(`שלחנו קישור כניסה ל-${email}. אפשר לסגור את הלשונית.`, `We sent a sign in link to ${email}. You can close this tab.`)}</div>

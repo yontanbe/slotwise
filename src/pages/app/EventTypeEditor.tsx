@@ -22,7 +22,17 @@ export default function EventTypeEditor() {
   const toast = useToast()
   const copy = useCopy()
   const { L, dir, weekdayShort } = useI18n()
-  const data = useLoad(async () => ({ ets: await store.listEventTypes(me.id), schedules: await store.listSchedules(me.id) }), [me.id])
+  const data = useLoad(async () => {
+    const ets = await store.listEventTypes(me.id)
+    const cur = ets.find((e) => e.id === id)
+    let names: Record<string, string> = {}
+    if (cur?.teamId) {
+      const t = (await store.listMyTeams(me.id)).find((x) => x.id === cur.teamId)
+      const b = t ? await store.getTeam(t.slug) : null
+      names = Object.fromEntries((b?.members ?? []).map((m) => [m.user.id, m.user.name]))
+    }
+    return { ets, schedules: await store.listSchedules(me.id), names }
+  }, [me.id, id])
   const [et, setEt] = useState<EventType | null>(null)
   const [tab, setTab] = useState<Tab>('basics')
   const [dirty, setDirty] = useState(false)
@@ -43,6 +53,8 @@ export default function EventTypeEditor() {
     if (!slug) return toast(L('צריך כתובת (slug) באנגלית', 'A latin slug is required'), true)
     if (data.data!.ets.some((e) => e.id !== et.id && e.slug === slug)) return toast(L('הכתובת כבר בשימוש', 'Slug already used'), true)
     if (!et.durations.length) return toast(L('צריך לפחות משך אחד', 'Add at least one duration'), true)
+    if (et.redirectUrl && !/^https?:\/\//i.test(et.redirectUrl)) return toast(L('כתובת הפניה חייבת להתחיל ב-https://', 'Redirect URL must start with https://'), true)
+    if (et.price?.paymentLink && !/^https:\/\//i.test(et.price.paymentLink)) return toast(L('קישור תשלום חייב להתחיל ב-https://', 'Payment link must start with https://'), true)
     const durations = [...new Set(et.durations)].sort((a, b) => a - b)
     const next = { ...et, slug, durations, defaultDuration: durations.includes(et.defaultDuration) ? et.defaultDuration : durations[0] }
     await store.saveEventType(next)
@@ -252,6 +264,100 @@ export default function EventTypeEditor() {
             <Setting title={L('דורש אישור', 'Requires confirmation')} text={L('ההזמנה תמתין לאישור שלך לפני שתיכנס ליומן.', 'Bookings wait for your approval before hitting the calendar.')}>
               <Toggle checked={et.requiresConfirmation} onChange={(v) => set('requiresConfirmation', v)} />
             </Setting>
+            {et.requiresConfirmation && (
+              <Setting title={L('דחייה אוטומטית', 'Auto decline')} text={L('בקשה שלא אושרה תוך X שעות תידחה ותשוחרר.', 'Requests not approved within X hours are declined and freed.')}>
+                <input className="input input-sm" type="number" min={0} style={{ width: 90 }} placeholder="∞" value={et.autoDeclineHours ?? ''} onChange={(e) => set('autoDeclineHours', e.target.value ? Number(e.target.value) : null)} />
+              </Setting>
+            )}
+            <Setting title={L('פגישה חוזרת', 'Recurring')} text={L('המוזמן יכול לקבוע סדרה של פגישות במכה אחת.', 'Invitees can book a series in one go.')}>
+              <div className="row" style={{ gap: 8 }}>
+                {et.recurring && (
+                  <>
+                    <select className="select input-sm" style={{ width: 'auto' }} value={et.recurring.freq} onChange={(e) => set('recurring', { ...et.recurring!, freq: e.target.value as 'weekly' })}>
+                      <option value="weekly">{L('כל שבוע', 'Weekly')}</option>
+                      <option value="biweekly">{L('כל שבועיים', 'Every 2 weeks')}</option>
+                      <option value="monthly">{L('כל חודש', 'Monthly')}</option>
+                    </select>
+                    <input className="input input-sm" type="number" min={2} max={52} style={{ width: 70 }} value={et.recurring.maxCount} onChange={(e) => set('recurring', { ...et.recurring!, maxCount: Math.min(52, Math.max(2, Number(e.target.value))) })} />
+                  </>
+                )}
+                <Toggle checked={!!et.recurring} onChange={(v) => set('recurring', v ? { freq: 'weekly', maxCount: 4 } : null)} />
+              </div>
+            </Setting>
+            <Setting title={L('תשלום', 'Payment')} text={L('מחיר, מקדמה ומדיניות החזר. בלי שרת: Stripe Payment Link. עם שרת: Stripe Checkout אוטומטי.', 'Price, deposit and refund policy. Without a server: a Stripe Payment Link. With one: automatic Stripe Checkout.')}>
+              <Toggle checked={!!et.price} onChange={(v) => set('price', v ? { amount: 200, currency: 'ILS', mode: 'full', refundHours: 24 } : null)} />
+            </Setting>
+            {et.price && (
+              <div className="card-flat stack" style={{ ['--gap' as string]: '12px' }}>
+                <div className="grid-3">
+                  <Field label={L('מחיר', 'Price')}>
+                    <input className="input" type="number" min={0} value={et.price.amount} onChange={(e) => set('price', { ...et.price!, amount: Number(e.target.value) })} />
+                  </Field>
+                  <Field label={L('מטבע', 'Currency')}>
+                    <select className="select" value={et.price.currency} onChange={(e) => set('price', { ...et.price!, currency: e.target.value as 'ILS' })}>
+                      <option>ILS</option><option>USD</option><option>EUR</option>
+                    </select>
+                  </Field>
+                  <Field label={L('גבייה', 'Charge')}>
+                    <select className="select" value={et.price.mode} onChange={(e) => set('price', { ...et.price!, mode: e.target.value as 'full' })}>
+                      <option value="full">{L('מלא', 'Full')}</option>
+                      <option value="deposit">{L('מקדמה', 'Deposit')}</option>
+                    </select>
+                  </Field>
+                </div>
+                <div className="grid-3">
+                  {et.price.mode === 'deposit' && (
+                    <Field label={L('סכום מקדמה', 'Deposit')}>
+                      <input className="input" type="number" min={0} value={et.price.depositAmount ?? ''} onChange={(e) => set('price', { ...et.price!, depositAmount: Number(e.target.value) })} />
+                    </Field>
+                  )}
+                  <Field label={L('החזר מלא עד (שעות לפני)', 'Full refund until (hours before)')}>
+                    <input className="input" type="number" min={0} value={et.price.refundHours ?? ''} onChange={(e) => set('price', { ...et.price!, refundHours: e.target.value ? Number(e.target.value) : undefined })} />
+                  </Field>
+                  <Field label={L('דמי אי הגעה', 'No show fee')}>
+                    <input className="input" type="number" min={0} value={et.price.noShowFee ?? ''} onChange={(e) => set('price', { ...et.price!, noShowFee: e.target.value ? Number(e.target.value) : undefined })} />
+                  </Field>
+                </div>
+                <Field label="Stripe Payment Link" hint={L('אופציונלי. נוסיף client_reference_id עם מזהה הפגישה.', 'Optional. We add client_reference_id with the booking id.')}>
+                  <input className="input ltr" placeholder="https://buy.stripe.com/..." value={et.price.paymentLink ?? ''} onChange={(e) => set('price', { ...et.price!, paymentLink: e.target.value })} />
+                </Field>
+              </div>
+            )}
+            <Setting title={L('הגבלה לכל מוזמן', 'Per invitee limit')} text={L('כמה פגישות מותר לאותו מייל בתקופה.', 'How many bookings one email may make in a period.')}>
+              <div className="row" style={{ gap: 6 }}>
+                {et.perInviteeLimit && (
+                  <>
+                    <input className="input input-sm" type="number" min={1} style={{ width: 64 }} value={et.perInviteeLimit.count} onChange={(e) => set('perInviteeLimit', { ...et.perInviteeLimit!, count: Math.max(1, Number(e.target.value)) })} />
+                    <span className="small">{L('ב-', 'per')}</span>
+                    <input className="input input-sm" type="number" min={1} style={{ width: 70 }} value={et.perInviteeLimit.days} onChange={(e) => set('perInviteeLimit', { ...et.perInviteeLimit!, days: Math.max(1, Number(e.target.value)) })} />
+                    <span className="small">{L('ימים', 'days')}</span>
+                  </>
+                )}
+                <Toggle checked={!!et.perInviteeLimit} onChange={(v) => set('perInviteeLimit', v ? { count: 1, days: 30 } : null)} />
+              </div>
+            </Setting>
+            {et.teamId && (
+              <div className="card-flat stack" style={{ ['--gap' as string]: '10px' }}>
+                <b>{L('מארחים', 'Hosts')} · {et.schedulingType === 'collective' ? L('משותף', 'Collective') : L('סבב', 'Round robin')}</b>
+                {(et.hosts || []).map((h, i) => (
+                  <div key={h.userId} className="row wrap" style={{ gap: 8 }}>
+                    <span className="small grow">{data.data!.names[h.userId] ?? h.userId}</span>
+                    {et.schedulingType !== 'collective' && (
+                      <>
+                        <select className="select input-sm" style={{ width: 'auto' }} value={h.priority} onChange={(e) => set('hosts', et.hosts!.map((x, j) => (j === i ? { ...x, priority: Number(e.target.value) } : x)))}>
+                          <option value={0}>{L('עדיפות נמוכה', 'Low')}</option>
+                          <option value={1}>{L('בינונית', 'Medium')}</option>
+                          <option value={2}>{L('גבוהה', 'High')}</option>
+                          <option value={3}>{L('דחופה', 'Urgent')}</option>
+                        </select>
+                        <input className="input input-sm" type="number" min={1} max={100} style={{ width: 70 }} title={L('משקל', 'Weight')} value={h.weight} onChange={(e) => set('hosts', et.hosts!.map((x, j) => (j === i ? { ...x, weight: Number(e.target.value) } : x)))} />
+                      </>
+                    )}
+                    <button className="icon-btn" disabled={(et.hosts || []).length < 2} onClick={() => set('hosts', et.hosts!.filter((_, j) => j !== i))}><Icon name="x" size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
             <Setting title={L('אירוע קבוצתי (מושבים)', 'Group event (seats)')} text={L('כמה אנשים יכולים להזמין את אותו מועד.', 'Several people can book the same time.')}>
               <div className="row" style={{ gap: 8 }}>
                 {et.seats ? <input className="input input-sm" type="number" min={2} style={{ width: 90 }} value={et.seats} onChange={(e) => set('seats', Math.max(2, Number(e.target.value)))} /> : null}
@@ -265,7 +371,7 @@ export default function EventTypeEditor() {
               <Toggle checked={et.hidden} onChange={(v) => set('hidden', v)} />
             </Setting>
             <Field label={L('הפניה אחרי הזמנה', 'Redirect after booking')} hint={L('נוסיף name, email, start ו-event לכתובת. בלי דף אזהרה.', 'We append name, email, start and event. No interstitial page.')}>
-              <input className="input ltr" type="url" placeholder="https://" value={et.redirectUrl} onChange={(e) => set('redirectUrl', e.target.value)} />
+              <input className={`input ltr${et.redirectUrl && !/^https?:\/\//i.test(et.redirectUrl) ? ' err' : ''}`} type="url" placeholder="https://" value={et.redirectUrl} onChange={(e) => set('redirectUrl', e.target.value)} />
             </Field>
             <div className="notice small">
               <Icon name="link" />

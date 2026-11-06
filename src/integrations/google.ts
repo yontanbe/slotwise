@@ -147,6 +147,8 @@ export async function freeBusy(calendarIds: string[], timeMin: string, timeMax: 
 }
 
 export interface GEventInput {
+  /** deterministic id so retries and parallel tabs cannot create duplicates */
+  id?: string
   summary: string
   description: string
   start: string
@@ -168,12 +170,29 @@ export async function insertEvent(calendarId: string, ev: GEventInput) {
     reminders: { useDefault: true },
   }
   if (ev.withMeet) body.conferenceData = { createRequest: { requestId: ev.requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } }
-  const r = await gfetch<{ id: string; hangoutLink?: string; htmlLink: string }>(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`,
-    { method: 'POST', body: JSON.stringify(body) },
-  )
-  return r
+  if (ev.id) body.id = ev.id
+  try {
+    return await gfetch<{ id: string; hangoutLink?: string; htmlLink: string }>(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+  } catch (e) {
+    // 409: another tab or a previous run already created it
+    if (ev.id && /already exists|duplicate|409/i.test(String((e as Error).message))) {
+      return gfetch<{ id: string; hangoutLink?: string; htmlLink: string }>(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+      )
+    }
+    throw e
+  }
 }
+
+/** Google event ids must be base32hex (a-v, 0-9). Hex encoding of our id satisfies that. */
+export function googleEventId(bookingId: string) {
+  return 'slot' + Array.from(bookingId, (c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')
+}
+
+export const SINGLE_EMAIL = /^[^\s@,;<>"()[\]\\]+@[^\s@,;<>"()[\]\\]+\.[A-Za-z]{2,}$/
 
 export async function patchEvent(calendarId: string, eventId: string, patch: { start: string; end: string }) {
   return gfetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}?sendUpdates=all`, {
@@ -199,6 +218,9 @@ function b64url(s: string) {
 const encWord = (s: string) => `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(s)))}?=`
 
 export async function sendGmail(p: { to: string; subject: string; text: string; fromName?: string; ics?: string }) {
+  const to = p.to.trim()
+  if (!SINGLE_EMAIL.test(to) || to.length > 254) throw new Error('invalid_recipient')
+  p = { ...p, to, subject: p.subject.replace(/[\r\n]+/g, ' ').slice(0, 300) }
   const boundary = 'sw' + Math.random().toString(36).slice(2)
   const headers = [`To: ${p.to}`, `Subject: ${encWord(p.subject)}`, 'MIME-Version: 1.0']
   let raw: string
@@ -222,4 +244,34 @@ export async function sendGmail(p: { to: string; subject: string; text: string; 
     raw = [...headers, 'Content-Type: text/plain; charset="UTF-8"', '', p.text].join('\r\n')
   }
   return gfetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', body: JSON.stringify({ raw: b64url(raw) }) })
+}
+
+/**
+ * Invitee calendar overlay (SavvyCal style): read only free/busy of the invitee's own primary
+ * calendar. The token lives in memory only and nothing is stored or sent to the host.
+ */
+let inviteeToken: { access_token: string; expires_at: number } | null = null
+export async function getInviteeBusy(timeMin: string, timeMax: string): Promise<{ start: string; end: string }[]> {
+  const clientId = getConfig().googleClientId
+  if (!clientId) throw new Error('missing_client_id')
+  if (!inviteeToken || inviteeToken.expires_at < Date.now() + 30_000) {
+    await loadGis()
+    inviteeToken = await new Promise((resolve, reject) => {
+      const client = window.google!.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: SCOPES.calendarRead,
+        callback: (r) => (r.access_token ? resolve({ access_token: r.access_token, expires_at: Date.now() + (r.expires_in ?? 3600) * 1000 }) : reject(new Error(r.error || 'no_token'))),
+        error_callback: (e) => reject(new Error(e.type)),
+      })
+      client.requestAccessToken({ prompt: '' })
+    })
+  }
+  const res = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${inviteeToken!.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ timeMin, timeMax, items: [{ id: 'primary' }] }),
+  })
+  if (!res.ok) throw new Error(`google_${res.status}`)
+  const j = (await res.json()) as { calendars: Record<string, { busy: { start: string; end: string }[] }> }
+  return Object.values(j.calendars).flatMap((c) => c.busy || []).map((b) => ({ start: new Date(b.start).toISOString(), end: new Date(b.end).toISOString() }))
 }

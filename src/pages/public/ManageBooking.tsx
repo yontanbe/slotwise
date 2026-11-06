@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import Booker from '../../components/Booker'
 import PublicShell, { NotFound } from '../../components/PublicShell'
@@ -8,16 +8,48 @@ import { useI18n } from '../../i18n'
 import { runSync } from '../../integrations/sync'
 import { downloadIcs } from '../../lib/ics'
 import { googleCalendarLink, outlookLink, whatsappLink } from '../../lib/links'
+import { functionsUrl } from '../../lib/config'
+import { formatMoney } from '../../components/Booker'
 import { LOCATION_GLYPH, locationDetail, locationName } from '../../lib/locations'
+
+/** Stripe Payment Link (works without a server) with the booking id as client_reference_id. */
+function paymentLinkUrl(b: { id: string; attendee: { email: string }; payment?: { link?: string } }): string | null {
+  if (!b.payment?.link || !/^https:\/\//.test(b.payment.link)) return null
+  const u = new URL(b.payment.link)
+  u.searchParams.set('client_reference_id', b.id)
+  u.searchParams.set('prefilled_email', b.attendee.email)
+  return u.toString()
+}
+
+/** Stripe Checkout through the Edge Function: POST {token} -> {url}. */
+async function startCheckout(token: string): Promise<string> {
+  const res = await fetch(`${functionsUrl()}/stripe/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok || !j.url) throw new Error(j?.error?.message || `checkout_${res.status}`)
+  return j.url as string
+}
 
 export default function ManageBooking() {
   const { token = '' } = useParams()
   const [params] = useSearchParams()
   const store = useStore()
   const toast = useToast()
-  const { L, fmtDate, fmtRange } = useI18n()
+  const { L, fmtDate, fmtRange, intl } = useI18n()
   const { data, loading, reload } = useLoad(() => store.getBookingByToken(token), [token])
-  const [mode, setMode] = useState<'view' | 'cancel' | 'reschedule'>('view')
+  const action = params.get('action')
+  const [mode, setMode] = useState<'view' | 'cancel' | 'reschedule'>(action === 'cancel' ? 'cancel' : action === 'reschedule' ? 'reschedule' : 'view')
+  const [confirmedNow, setConfirmedNow] = useState(false)
+  useEffect(() => {
+    if (action !== 'confirm' || confirmedNow) return
+    setConfirmedNow(true)
+    store.confirmAttendance(token).then((b) => {
+      if (b) {
+        toast(L('תודה, ההגעה אושרה', 'Thanks, attendance confirmed'))
+        reload()
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action])
   const [reason, setReason] = useState('')
   const profile = useLoad(() => (data && mode === 'reschedule' ? store.getPublicProfile(data.user.username) : Promise.resolve(null)), [data?.user.username, mode])
 
@@ -73,6 +105,39 @@ export default function ManageBooking() {
             </div>
           </div>
         )}
+
+        {b.payment && b.payment.status === 'unpaid' && active && (
+          <div className="pay-box">
+            <div>
+              <div className="eyebrow">{L('תשלום', 'Payment')}</div>
+              <div className="display" style={{ fontSize: 22 }}>{formatMoney(b.payment.amount, b.payment.currency, intl)}</div>
+              {eventType?.price?.refundHours ? <div className="tiny muted">{L(`החזר מלא בביטול עד ${eventType.price.refundHours} שעות לפני`, `Full refund if cancelled ${eventType.price.refundHours}h before`)}</div> : null}
+            </div>
+            {paymentLinkUrl(b) ? (
+              <a className="btn btn-accent" href={paymentLinkUrl(b)!} target="_blank" rel="noreferrer">
+                {L('לתשלום מאובטח', 'Pay securely')}
+              </a>
+            ) : functionsUrl() ? (
+              <button
+                className="btn btn-accent"
+                onClick={async () => {
+                  try {
+                    window.location.href = await startCheckout(b.token)
+                  } catch (e) {
+                    toast(String((e as Error).message), true)
+                  }
+                }}
+              >
+                {L('לתשלום מאובטח', 'Pay securely')}
+              </button>
+            ) : (
+              <span className="small muted">{L('המארח ישלח פרטי תשלום', 'The host will send payment details')}</span>
+            )}
+          </div>
+        )}
+        {params.get('paid') === '1' && b.payment?.status !== 'paid' && <div className="notice small">{L('התשלום בעיבוד. העמוד יתעדכן כשיאושר.', 'Payment is processing. This page updates once confirmed.')}</div>}
+        {b.payment?.status === 'paid' && <div className="notice accent small"><Icon name="check" /> {L('התשלום התקבל', 'Payment received')}</div>}
+        {b.reconfirmedAt && <div className="notice small"><Icon name="check" /> {L('אישרת הגעה', 'You confirmed attendance')}</div>}
 
         <article className="receipt">
           <div className="receipt-head">

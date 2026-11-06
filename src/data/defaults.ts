@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon'
 import { nowISO, slugify, token, uid } from '../lib/id'
-import type { Booking, EventType, Poll, Schedule, User } from '../lib/types'
+import type { Booking, EventType, PersonalLink, Poll, RoutingForm, Schedule, Team, User, Workflow } from '../lib/types'
+import { WORKFLOW_PRESETS } from '../../supabase/functions/_shared/workflows'
 
 export const BRAND_COLORS = ['#E4572E', '#14213D', '#7FA087', '#D9A441', '#5B6CA8', '#B5536B', '#2F7F7A']
 
@@ -93,6 +94,8 @@ export function newEventType(ownerId: string, scheduleId: string, title = 'פג�
 
 export interface SeedData {
   user: User
+  users: User[]
+  kinds: { workflow: Workflow[]; routing_form: RoutingForm[]; personal_link: PersonalLink[]; team: Team[] }
   schedules: Schedule[]
   eventTypes: EventType[]
   bookings: Booking[]
@@ -219,5 +222,88 @@ export function buildSeed(): SeedData {
     createdAt: nowISO(),
   }
 
-  return { user, schedules: [work, evenings], eventTypes: [intro, consult, workshop, secret], bookings, polls: [poll] }
+  intro.recurring = null
+  consult.price = { amount: 450, currency: 'ILS', mode: 'deposit', depositAmount: 150, paymentLink: '', refundHours: 24 }
+  consult.autoDeclineHours = 48
+  workshop.recurring = { freq: 'weekly', maxCount: 6 }
+
+  // second host + a team for round robin / collective demos
+  const noa = newUser('demo-noa', 'noa@example.com', 'נועה שגיא')
+  noa.username = 'noa'
+  noa.bio = 'מעצבת מוצר. אוהבת שיחות קצרות וממוקדות.'
+  noa.timezone = 'Asia/Jerusalem'
+  noa.onboarded = true
+  noa.brandColor = '#7FA087'
+  const noaWork = newSchedule(noa.id, 'שעות עבודה', 'Asia/Jerusalem')
+  noaWork.weekly = [[r('10:00', '18:00')], [r('10:00', '18:00')], [r('12:00', '18:00')], [r('10:00', '18:00')], [r('10:00', '14:00')], [], []]
+  noa.defaultScheduleId = noaWork.id
+  const noaIntro = newEventType(noa.id, noaWork.id, 'שיחת עיצוב', 30)
+  noaIntro.slug = 'design'
+  noaIntro.color = '#7FA087'
+
+  const team: Team = {
+    id: 'team-studio',
+    ownerId: user.id,
+    name: 'סטודיו מוצר',
+    slug: 'studio',
+    bio: 'צוות ייעוץ מוצר ועיצוב. קובעים עם מי שפנוי.',
+    members: [
+      { userId: user.id, role: 'owner', accepted: true },
+      { userId: noa.id, role: 'member', accepted: true },
+    ],
+    createdAt: nowISO(),
+  }
+  const rr = newEventType(user.id, work.id, 'שיחת אבחון מוצר', 30)
+  rr.slug = 'discovery'
+  rr.teamId = team.id
+  rr.schedulingType = 'round_robin'
+  rr.hosts = [
+    { userId: user.id, priority: 2, weight: 50 },
+    { userId: noa.id, priority: 2, weight: 50 },
+  ]
+  rr.color = '#5B6CA8'
+  rr.description = 'נשבץ אתכם עם מי שפנוי מהצוות.'
+  rr.position = 10
+  const collective = newEventType(user.id, work.id, 'פגישת צוות משותפת', 45)
+  collective.slug = 'together'
+  collective.teamId = team.id
+  collective.schedulingType = 'collective'
+  collective.hosts = rr.hosts.map((h) => ({ ...h }))
+  collective.color = '#B5536B'
+  collective.description = 'שנינו בפגישה. מוצגים רק זמנים ששנינו פנויים.'
+  collective.position = 11
+
+  const preset = WORKFLOW_PRESETS[0].he
+  const workflow: Workflow = { id: uid(), ownerId: user.id, active: true, eventTypeIds: [], createdAt: nowISO(), ...preset, steps: preset.steps.map((x) => ({ ...x })) }
+  const form: RoutingForm = {
+    id: uid(),
+    ownerId: user.id,
+    title: 'במה נוכל לעזור?',
+    description: 'שתי שאלות ונכוון אתכם לפגישה הנכונה.',
+    slug: 'start',
+    fields: [
+      { id: 'name', type: 'text', label: 'שם', required: true },
+      { id: 'email', type: 'email', label: 'מייל', required: true },
+      { id: 'need', type: 'select', label: 'מה אתם צריכים?', required: true, options: ['ייעוץ אסטרטגי', 'היכרות ראשונה', 'עיצוב', 'סתם שאלה'] },
+    ],
+    rules: [
+      { id: uid(), match: 'all', conditions: [{ fieldId: 'need', op: 'equals', value: 'ייעוץ אסטרטגי' }], target: { type: 'event', eventTypeId: consult.id } },
+      { id: uid(), match: 'all', conditions: [{ fieldId: 'need', op: 'equals', value: 'עיצוב' }], target: { type: 'event', eventTypeId: rr.id, teamSlug: 'studio' } },
+      { id: uid(), match: 'all', conditions: [{ fieldId: 'need', op: 'equals', value: 'סתם שאלה' }], target: { type: 'message', text: 'מעולה, כתבו לנו ל-hello@example.com ונחזור אליכם.' } },
+    ],
+    fallback: { type: 'event', eventTypeId: intro.id },
+    responses: [],
+    createdAt: nowISO(),
+  }
+  const personal: PersonalLink = { id: uid(), ownerId: user.id, slug: 'dana', eventTypeId: intro.id, name: 'דנה לוי', email: 'dana@example.com', greeting: 'היי דנה, שמח שנדבר. בחרי זמן שנוח לך.', createdAt: nowISO() }
+
+  return {
+    user,
+    users: [user, noa],
+    kinds: { workflow: [workflow], routing_form: [form], personal_link: [personal], team: [team] },
+    schedules: [work, evenings, noaWork],
+    eventTypes: [intro, consult, workshop, secret, noaIntro, rr, collective],
+    bookings,
+    polls: [poll],
+  }
 }

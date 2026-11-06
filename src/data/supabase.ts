@@ -1,10 +1,23 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { nowISO } from '../lib/id'
-import type { Booking, BusyBlock, EventType, OneOffLink, OutboxMessage, Poll, Schedule, User } from '../lib/types'
+import type { Booking, BusyBlock, EventType, OneOffLink, OutboxMessage, PersonalLink, Poll, RoutingResponse, Schedule, Team, User } from '../lib/types'
 import { makeBooking } from './local'
-import type { BookingBundle, CreateResult, ExportBundle, NewBookingInput, PublicProfile, Store } from './store'
+import {
+  seriesStarts,
+  type BookingBundle,
+  type CreateResult,
+  type ExportBundle,
+  type Kind as ExtraKind,
+  type KindMap,
+  type NewBookingInput,
+  type PublicProfile,
+  type PublicRoutingForm,
+  type PublicUser,
+  type Store,
+  type TeamBundle,
+} from './store'
 
-type Kind = 'profile' | 'event_type' | 'schedule' | 'booking' | 'poll' | 'link' | 'busy' | 'outbox'
+type Kind = 'profile' | 'event_type' | 'schedule' | 'booking' | 'poll' | 'link' | 'busy' | 'outbox' | ExtraKind
 
 export class SupabaseStore implements Store {
   readonly mode = 'supabase' as const
@@ -84,6 +97,10 @@ export class SupabaseStore implements Store {
   }
   listBookings(ownerId: string) {
     return this.list<Booking>('booking', ownerId)
+  }
+  async getBooking(id: string) {
+    const { data } = await this.sb.from('records').select('data').eq('kind', 'booking').eq('id', id).maybeSingle()
+    return (data?.data as Booking) ?? null
   }
   saveBooking(b: Booking) {
     return this.put('booking', b.ownerId, b.id, b)
@@ -166,10 +183,30 @@ export class SupabaseStore implements Store {
       await this.saveBooking(b)
       return { ok: true, booking: b }
     }
-    const draft = makeBooking(input, { title: '', requiresConfirmation: false } as EventType)
+    const series =
+      input.count && input.count > 1 && input.seriesFreq
+        ? seriesStarts(input.start, input.end, input.seriesFreq, input.count, input.seriesTz || 'UTC')
+        : null
     const res = await this.rpc<CreateResult>('public_create_booking', {
-      p_booking: { ...draft, hp: input.hp || '' },
+      p_booking: {
+        ownerId: input.ownerId,
+        eventTypeId: input.eventTypeId,
+        start: input.start,
+        end: input.end,
+        attendee: input.attendee,
+        guests: input.guests,
+        notes: input.notes,
+        answers: input.answers,
+        location: input.location,
+        utm: input.utm,
+        source: input.source,
+        coHostIds: input.coHostIds,
+        personalLinkId: input.personalLinkId,
+        routingResponseId: input.routingResponseId,
+        hp: input.hp || '',
+      },
       p_link_token: input.linkToken ?? null,
+      p_series: series,
     })
     this.emit()
     return res
@@ -183,15 +220,7 @@ export class SupabaseStore implements Store {
     return b
   }
   async rescheduleByToken(token: string, start: string, end: string, reason: string): Promise<CreateResult> {
-    const fresh = makeBooking(
-      { ownerId: '', eventTypeId: '', start, end, attendee: {} as Booking['attendee'], guests: [], notes: '', answers: {}, location: { type: 'meet' }, utm: {}, source: 'web' },
-      { title: '', requiresConfirmation: false } as EventType,
-    )
-    const res = await this.rpc<CreateResult>('public_reschedule_booking', {
-      p_token: token,
-      p_new: { id: fresh.id, token: fresh.token, start, end },
-      p_reason: reason,
-    })
+    const res = await this.rpc<CreateResult>('public_reschedule_booking', { p_token: token, p_new: { start, end }, p_reason: reason })
     this.emit()
     return res
   }
@@ -205,5 +234,41 @@ export class SupabaseStore implements Store {
   }
   getLink(token: string) {
     return this.rpc<{ link: OneOffLink; profile: PublicProfile } | null>('public_link', { p_token: token })
+  }
+
+  async confirmAttendance(token: string) {
+    const b = await this.rpc<Booking | null>('public_reconfirm', { p_token: token })
+    this.emit()
+    return b
+  }
+
+  // ---------- generic collections ----------
+  listKind<K extends ExtraKind>(kind: K, ownerId: string) {
+    return this.list<KindMap[K]>(kind, ownerId)
+  }
+  saveKind<K extends ExtraKind>(kind: K, item: KindMap[K]) {
+    const it = item as unknown as { id: string; ownerId: string }
+    return this.put(kind, it.ownerId, it.id, item)
+  }
+  deleteKind(_kind: ExtraKind, id: string) {
+    return this.del(id)
+  }
+  listMyTeams(_userId: string) {
+    return this.rpc<Team[]>('my_teams', {})
+  }
+  findUserByUsername(username: string) {
+    return this.rpc<PublicUser | null>('find_user', { p_username: username })
+  }
+  getPersonalLink(username: string, slug: string) {
+    return this.rpc<PersonalLink | null>('public_personal_link', { p_username: username, p_slug: slug })
+  }
+  getRoutingForm(username: string, slug: string) {
+    return this.rpc<{ form: PublicRoutingForm; profile: PublicProfile } | null>('public_routing_form', { p_username: username, p_slug: slug })
+  }
+  async submitRouting(formId: string, response: RoutingResponse) {
+    await this.rpc('public_submit_routing', { p_form_id: formId, p_response: response })
+  }
+  getTeam(slug: string) {
+    return this.rpc<TeamBundle | null>('public_team', { p_slug: slug })
   }
 }

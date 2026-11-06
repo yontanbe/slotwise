@@ -36,7 +36,34 @@ export interface User {
   blockedEmails: string[]
   onboarded: boolean
   google?: GoogleSettings
+  outOfOffice?: OutOfOffice[]
+  travel?: TravelPeriod[]
+  whatsapp?: WhatsAppSettings
+  /** when true, workflows and webhooks run in the Edge Functions and the browser skips them */
+  automationOnServer?: boolean
   createdAt: ISO
+}
+
+export interface OutOfOffice {
+  id: string
+  start: DateStr
+  end: DateStr // inclusive
+  note: string
+  redirectUsername?: string
+}
+
+export interface TravelPeriod {
+  id: string
+  start: DateStr
+  end: DateStr // inclusive
+  timezone: string
+}
+
+export interface WhatsAppSettings {
+  /** 'link' = click to chat (static). 'cloud' = Meta Cloud API via edge function */
+  mode: 'link' | 'cloud'
+  phoneNumberId?: string
+  defaultOptIn: boolean
 }
 
 export interface GoogleSettings {
@@ -146,6 +173,32 @@ export interface EventType {
   preferred: PreferredWindow[]
   position: number
   createdAt: ISO
+  /** P1 extras, all optional for backwards compatibility */
+  recurring?: { freq: 'weekly' | 'biweekly' | 'monthly'; maxCount: number } | null
+  price?: EventPrice | null
+  autoDeclineHours?: number | null
+  reconfirmHours?: number | null
+  perInviteeLimit?: { count: number; days: number } | null
+  teamId?: string | null
+  schedulingType?: 'round_robin' | 'collective' | null
+  hosts?: TeamHost[]
+}
+
+export interface EventPrice {
+  amount: number // in major units
+  currency: 'ILS' | 'USD' | 'EUR'
+  mode: 'full' | 'deposit'
+  depositAmount?: number
+  /** Stripe Payment Link (works without a server) */
+  paymentLink?: string
+  noShowFee?: number
+  refundHours?: number // full refund if cancelled at least N hours before
+}
+
+export interface TeamHost {
+  userId: string
+  priority: number // 0 low .. 3 urgent
+  weight: number // 1..100
 }
 
 export type BookingStatus = 'accepted' | 'pending' | 'cancelled' | 'rejected'
@@ -192,6 +245,25 @@ export interface Booking {
   google?: { eventId?: string; meetUrl?: string; syncedAt?: ISO; error?: string }
   emailsSent?: string[]
   createdAt: ISO
+  recurringId?: string
+  recurringIndex?: number
+  coHostIds?: string[]
+  teamId?: string
+  payment?: BookingPayment
+  reconfirmedAt?: ISO
+  workflowDone?: string[] // `${workflowId}:${stepId}`
+  personalLinkId?: string
+  routingResponseId?: string
+  webhooksSent?: string[]
+}
+
+export interface BookingPayment {
+  status: 'unpaid' | 'paid' | 'refunded' | 'waived'
+  amount: number
+  currency: string
+  link?: string
+  paidAt?: ISO
+  ref?: string
 }
 
 export interface PollOption {
@@ -238,7 +310,7 @@ export interface OneOffLink {
 export interface BusyBlock {
   start: ISO
   end: ISO
-  source: 'google' | 'booking'
+  source: 'google' | 'booking' | 'shabbat' | 'ooo'
   eventTypeId?: string
 }
 
@@ -253,4 +325,142 @@ export interface OutboxMessage {
   status: 'logged' | 'sent' | 'failed'
   via: 'outbox' | 'gmail'
   at: ISO
+}
+
+/* ---------------- workflows ---------------- */
+export type WorkflowTrigger =
+  | 'booked'
+  | 'requested'
+  | 'confirmed'
+  | 'cancelled'
+  | 'rescheduled'
+  | 'before_start'
+  | 'after_end'
+  | 'no_show'
+  | 'paid'
+
+export type WorkflowAction = 'email_attendee' | 'email_host' | 'email_custom' | 'whatsapp_attendee' | 'whatsapp_host' | 'sms_attendee' | 'webhook'
+
+export interface WorkflowStep {
+  id: string
+  action: WorkflowAction
+  to?: string
+  subject: string
+  body: string
+}
+
+export interface Workflow {
+  id: string
+  ownerId: string
+  name: string
+  active: boolean
+  trigger: WorkflowTrigger
+  offsetMins: number // for before_start / after_end
+  eventTypeIds: string[] // empty = all
+  steps: WorkflowStep[]
+  createdAt: ISO
+}
+
+/* ---------------- routing forms ---------------- */
+export type RouteTarget =
+  | { type: 'event'; eventTypeId: string; teamSlug?: string }
+  | { type: 'url'; url: string }
+  | { type: 'message'; text: string }
+
+export interface RoutingCondition {
+  fieldId: string
+  op: 'equals' | 'not_equals' | 'contains' | 'gt' | 'lt'
+  value: string
+}
+
+export interface RoutingRule {
+  id: string
+  match: 'all' | 'any'
+  conditions: RoutingCondition[]
+  target: RouteTarget
+}
+
+export interface RoutingForm {
+  id: string
+  ownerId: string
+  title: string
+  description: string
+  slug: string
+  fields: Question[]
+  rules: RoutingRule[]
+  fallback: RouteTarget
+  responses: RoutingResponse[]
+  createdAt: ISO
+}
+
+export interface RoutingResponse {
+  id: string
+  answers: Record<string, string | string[] | boolean>
+  routedTo: string
+  at: ISO
+}
+
+/* ---------------- personal links ---------------- */
+export interface PersonalLink {
+  id: string
+  ownerId: string
+  slug: string // /username/<slug>
+  eventTypeId: string
+  name: string
+  email: string
+  greeting: string
+  createdAt: ISO
+}
+
+/* ---------------- teams ---------------- */
+export interface TeamMember {
+  userId: string
+  role: 'owner' | 'admin' | 'member'
+  accepted: boolean
+}
+
+export interface Team {
+  id: string
+  ownerId: string
+  name: string
+  slug: string
+  bio: string
+  members: TeamMember[]
+  createdAt: ISO
+}
+
+/* ---------------- developer ---------------- */
+export type WebhookEvent = 'booking.created' | 'booking.cancelled' | 'booking.rescheduled' | 'booking.confirmed' | 'booking.rejected' | 'booking.paid' | 'poll.voted' | 'routing.submitted'
+
+export interface Webhook {
+  id: string
+  ownerId: string
+  url: string
+  secret: string
+  events: WebhookEvent[]
+  active: boolean
+  createdAt: ISO
+}
+
+export interface WebhookDelivery {
+  id: string
+  ownerId: string
+  webhookId: string
+  event: WebhookEvent
+  status: 'ok' | 'failed' | 'sent_opaque'
+  code?: number
+  attempts: number
+  at: ISO
+  payload: unknown
+}
+
+export interface ApiKey {
+  id: string
+  ownerId: string
+  name: string
+  prefix: string // first 8 chars, shown in UI
+  hash: string // sha-256 hex of the full key
+  scopes: ('read' | 'write')[]
+  createdAt: ISO
+  lastUsedAt?: ISO
 }

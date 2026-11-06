@@ -167,3 +167,11 @@ describe('computeSlots', () => {
     expect(g.size).toBeGreaterThan(0)
   })
 })
+
+describe('travel periods', () => {
+  it('applies weekly hours in the travel timezone', () => {
+    const s = computeSlots(base({ travel: [{ start: '2026-11-08', end: '2026-11-10', timezone: 'Europe/London' }], to: '2026-11-09T00:00:00.000Z' }))
+    // 09:00 London = 09:00 UTC = 11:00 Israel
+    expect(DateTime.fromISO(s[0].start).toUTC().toFormat('HH:mm')).toBe('09:00')
+  })
+})

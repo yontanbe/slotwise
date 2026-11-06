@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import { isDark, setTheme } from '../lib/theme'
 import { Icon, Logo } from './ui'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { isEmbedded } from './Booker'
 
 export function Prefs() {
   const { locale, setLocale } = useI18n()
@@ -29,6 +30,11 @@ export function Prefs() {
 
 export default function PublicShell({ children, wide = true }: { children: ReactNode; wide?: boolean }) {
   const { L } = useI18n()
+  const embedded = isEmbedded()
+  useEffect(() => {
+    document.documentElement.classList.toggle('embed', embedded)
+  }, [embedded])
+  if (embedded) return <main className="container embed-main" style={{ paddingBlock: 12 }}>{children}</main>
   return (
     <div className="public">
       <header className="public-top container">

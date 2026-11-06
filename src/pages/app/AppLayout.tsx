@@ -48,10 +48,14 @@ export default function AppLayout() {
     ['/app/bookings', 'calendar', L('פגישות', 'Bookings'), pending.data || undefined],
     ['/app/event-types', 'cards', L('סוגי פגישות', 'Event types')],
     ['/app/availability', 'clock', L('זמינות', 'Availability')],
+    ['/app/workflows', 'refresh', L('תהליכים', 'Workflows')],
+    ['/app/routing', 'arrow', L('טפסי ניתוב', 'Routing')],
+    ['/app/teams', 'users', L('צוותים', 'Teams')],
     ['/app/polls', 'poll', L('סקרים', 'Polls')],
-    ['/app/contacts', 'users', L('אנשי קשר', 'Contacts')],
+    ['/app/contacts', 'inbox', L('אנשי קשר', 'Contacts')],
     ['/app/insights', 'chart', L('נתונים', 'Insights')],
     ['/app/integrations', 'plug', L('חיבורים', 'Integrations')],
+    ['/app/developers', 'link', L('מפתחים', 'Developers')],
     ['/app/settings', 'gear', L('הגדרות', 'Settings')],
   ]
 

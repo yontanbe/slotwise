@@ -20,3 +20,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator && !new URLSearchParams(window.location.hash.split('?')[1] || '').get('embed')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {})
+  })
+}

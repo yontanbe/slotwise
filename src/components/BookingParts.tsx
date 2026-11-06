@@ -146,6 +146,25 @@ export function BookingDetails({ b, et, onClose }: { b: Booking | null; et?: Eve
           </dl>
         </div>
 
+        {(b.payment || b.reconfirmedAt || b.recurringId || b.coHostIds?.length || b.teamId) && (
+          <div className="badge-row">
+            {b.payment && (
+              <span className={`chip ${b.payment.status === 'paid' ? 'sage' : 'accent'}`}>
+                {b.payment.status === 'paid' ? L('שולם', 'Paid') : b.payment.status === 'waived' ? L('פטור מתשלום', 'Waived') : b.payment.status === 'refunded' ? L('הוחזר', 'Refunded') : L('ממתין לתשלום', 'Unpaid')} · {b.payment.amount} {b.payment.currency}
+              </span>
+            )}
+            {b.reconfirmedAt && <span className="chip sage">{L('אישר הגעה', 'Reconfirmed')}</span>}
+            {b.recurringId && <span className="chip">{L('סדרה', 'Series')} #{(b.recurringIndex ?? 0) + 1}</span>}
+            {b.coHostIds?.length ? <span className="chip">{L('משותפת', 'Collective')} +{b.coHostIds.length}</span> : null}
+            {b.teamId && !b.coHostIds?.length && <span className="chip">{L('צוות', 'Team')}</span>}
+          </div>
+        )}
+        {b.payment && b.payment.status === 'unpaid' && (
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn btn-line btn-sm" onClick={() => update({ payment: { ...b.payment!, status: 'paid', paidAt: nowISO() } }, 'paid')}>{L('סימון כשולם', 'Mark paid')}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => update({ payment: { ...b.payment!, status: 'waived' } }, 'payment_waived')}>{L('פטור', 'Waive')}</button>
+          </div>
+        )}
         {b.status === 'pending' && future && (
           <div className="notice accent">
             <div className="grow">{L('המוזמן מחכה לאישור שלך.', 'The invitee is waiting for your approval.')}</div>
@@ -174,6 +193,16 @@ export function BookingDetails({ b, et, onClose }: { b: Booking | null; et?: Eve
           {!future && b.status === 'accepted' && (
             <button className="btn btn-line btn-sm" onClick={() => update({ noShow: !b.noShow }, b.noShow ? 'no_show_cleared' : 'no_show')}>
               {b.noShow ? L('ביטול סימון לא הגיע', 'Clear no show') : L('סימון לא הגיע', 'Mark no show')}
+            </button>
+          )}
+          {active && future && b.recurringId && (
+            <button className="btn btn-danger btn-sm" onClick={async () => {
+              if (!window.confirm(L('לבטל את כל הפגישות העתידיות בסדרה?', 'Cancel all future meetings in this series?'))) return
+              const all = (await store.listBookings(me.id)).filter((x) => x.recurringId === b.recurringId && x.end > nowISO() && (x.status === 'accepted' || x.status === 'pending'))
+              for (const x of all) await store.saveBooking({ ...x, status: 'cancelled', cancelReason: L('סדרה בוטלה', 'Series cancelled'), history: [...x.history, { at: nowISO(), action: 'cancelled', by: 'host' }] })
+              toast(L(`בוטלו ${all.length}`, `Cancelled ${all.length}`))
+            }}>
+              {L('ביטול הסדרה', 'Cancel series')}
             </button>
           )}
           {active && future && (

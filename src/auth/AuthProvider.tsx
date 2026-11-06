@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { DEMO_USER_ID, newSchedule, newUser } from '../data/defaults'
 import { localFindUserByEmail, seedDemo } from '../data/local'
 import { useStore, useSupabase } from '../data/StoreProvider'
+import { disconnectGoogle } from '../integrations/google'
 import { appUrl } from '../lib/links'
 import type { User } from '../lib/types'
 
@@ -13,7 +14,8 @@ import type { User } from '../lib/types'
  */
 export interface AuthApi {
   mode: 'demo' | 'supabase'
-  status: 'loading' | 'in' | 'out'
+  status: 'loading' | 'in' | 'out' | 'mfa'
+  verifyMfa: (code: string) => Promise<string | null>
   userId: string | null
   user: User | null
   refresh: () => Promise<void>
@@ -52,8 +54,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [status, setStatus] = useState<AuthApi['status']>('loading')
 
-  /** Ensures a profile + default schedule exist for a fresh account. */
+  /** Ensures a profile + default schedule exist for a fresh account. Single flight per user id. */
+  const inflight = useRef(new Map<string, Promise<User>>())
   const ensureProfile = useCallback(
+    (id: string, email: string, name = ''): Promise<User> => {
+      const cur = inflight.current.get(id)
+      if (cur) return cur
+      const p = createProfile(id, email, name).finally(() => inflight.current.delete(id))
+      inflight.current.set(id, p)
+      return p
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store],
+  )
+  const createProfile = useCallback(
     async (id: string, email: string, name = '') => {
       let u = await store.getUser(id)
       if (!u) {
@@ -112,6 +126,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     setUser(u)
+    if (sb) {
+      // second factor: a verified TOTP factor exists but this session is still aal1
+      const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        setStatus('mfa')
+        return
+      }
+    }
     setStatus('in')
   }, [userId, store, sb, ensureProfile])
 
@@ -144,6 +166,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId,
       user,
       refresh,
+      verifyMfa: async (code) => {
+        if (!sb) return null
+        const { data: f } = await sb.auth.mfa.listFactors()
+        const factor = f?.totp.find((x) => x.status === 'verified')
+        if (!factor) return 'no_factor'
+        const { data: ch, error: e1 } = await sb.auth.mfa.challenge({ factorId: factor.id })
+        if (e1 || !ch) return e1?.message ?? 'challenge_failed'
+        const { error } = await sb.auth.mfa.verify({ factorId: factor.id, challengeId: ch.id, code })
+        if (error) return error.message
+        await refresh()
+        return null
+      },
       enterDemo: async () => {
         seedDemo()
         writeLocalSession(DEMO_USER_ID)
@@ -170,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error?.message ?? null
       },
       signOut: async () => {
+        disconnectGoogle()
         if (sb) await sb.auth.signOut()
         writeLocalSession(null)
         setUserId(null)
@@ -200,7 +235,7 @@ export function RequireAuth({ children, allowNotOnboarded = false }: { children:
   const { status, user } = useAuth()
   const loc = useLocation()
   if (status === 'loading') return <div className="boot"><span className="boot-dot" /></div>
-  if (status === 'out' || !user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
+  if (status === 'out' || status === 'mfa' || !user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
   if (!user.onboarded && !allowNotOnboarded) return <Navigate to="/onboarding" replace />
   return <>{children}</>
 }

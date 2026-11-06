@@ -1,15 +1,16 @@
 import { DateTime } from 'luxon'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import type { PublicProfile } from '../data/store'
+import { seriesStarts, type PublicProfile, type PublicUser } from '../data/store'
 import { useLoad, useStore } from '../data/StoreProvider'
 import { useI18n } from '../i18n'
+import { getInviteeBusy, isGoogleConfigured, SINGLE_EMAIL } from '../integrations/google'
 import { runSync } from '../integrations/sync'
 import { computeSlots, groupByDate, type Slot } from '../lib/availability'
 import { hebrewDate, shabbatBlocks } from '../lib/holidays'
 import { isValidPhone } from '../lib/links'
 import { LOCATION_GLYPH, locationDetail, locationName } from '../lib/locations'
-import type { Booking, EventLocation, EventType, Question } from '../lib/types'
+import type { Booking, EventLocation, EventType, PersonalLink, Question } from '../lib/types'
 import { Avatar, Field, Icon, MonthCalendar, TimezoneSelect, useToast } from './ui'
 
 interface Props {
@@ -17,7 +18,16 @@ interface Props {
   eventType: EventType
   reschedule?: Booking
   linkToken?: string
-  embedded?: boolean
+  /** personalized link: greeting + prefill */
+  personal?: PersonalLink
+  /** team or dynamic group: all hosts, including the event type owner */
+  team?: { mode: 'round_robin' | 'collective'; members: PublicProfile[] }
+  routingResponseId?: string
+  prefill?: Record<string, string>
+}
+
+export interface HostSlot extends Slot {
+  hostIds: string[]
 }
 
 function guessTz() {
@@ -28,14 +38,49 @@ function guessTz() {
   }
 }
 
-export default function Booker({ profile, eventType: et, reschedule, linkToken }: Props) {
+export function formatMoney(n: number, cur: string, intl: string) {
+  try {
+    return new Intl.NumberFormat(intl, { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n)
+  } catch {
+    return `${n} ${cur}`
+  }
+}
+
+export const isEmbedded = () => new URLSearchParams(window.location.hash.split('?')[1] || '').get('embed') === '1'
+export function postToParent(type: string, data: Record<string, unknown> = {}) {
+  if (window.parent !== window) window.parent.postMessage({ source: 'slotwise', type, ...data }, '*')
+}
+
+function oooSpans(u: PublicUser) {
+  return (u.outOfOffice || []).map((o) => ({
+    start: DateTime.fromISO(o.start, { zone: u.timezone }).startOf('day').toUTC().toISO()!,
+    end: DateTime.fromISO(o.end, { zone: u.timezone }).plus({ days: 1 }).startOf('day').toUTC().toISO()!,
+  }))
+}
+
+/** Round robin pick: highest priority, then fewest recent bookings relative to weight. */
+export function pickHost(candidates: string[], et: EventType, recentCounts: Record<string, number>): string {
+  const meta = (id: string) => et.hosts?.find((h) => h.userId === id) ?? { userId: id, priority: 2, weight: 50 }
+  return [...candidates].sort((a, b) => {
+    const pa = meta(a).priority
+    const pb = meta(b).priority
+    if (pa !== pb) return pb - pa
+    const la = (recentCounts[a] || 0) / Math.max(1, meta(a).weight)
+    const lb = (recentCounts[b] || 0) / Math.max(1, meta(b).weight)
+    return la - lb || a.localeCompare(b)
+  })[0]
+}
+
+export default function Booker({ profile, eventType: et, reschedule, linkToken, personal, team, routingResponseId, prefill }: Props) {
   const { L, locale, fmtTime, fmtDate, intl, dir, hour12, setHour12 } = useI18n()
   const store = useStore()
   const toast = useToast()
   const nav = useNavigate()
   const [params] = useSearchParams()
   const host = profile.user
+  const members = team?.members ?? [profile]
   const schedule = profile.schedules.find((s) => s.id === et.scheduleId) ?? profile.schedules[0]
+  const embedded = isEmbedded()
 
   const [tz, setTz] = useState(() => (et.lockTimezone ? schedule?.timezone || host.timezone : guessTz()))
   const [duration, setDuration] = useState(() => {
@@ -44,43 +89,84 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
   })
   const [month, setMonth] = useState<DateTime>(() => DateTime.now().setZone(tz).startOf('month'))
   const [date, setDate] = useState<string | null>(params.get('date'))
-  const [slot, setSlot] = useState<Slot | null>(null)
+  const [slot, setSlot] = useState<HostSlot | null>(null)
   const [view, setView] = useState<'month' | 'week'>('month')
   const [weekStartDay, setWeekStartDay] = useState<DateTime>(() => DateTime.now().setZone(tz).startOf('day'))
   const [step, setStep] = useState<'pick' | 'form'>('pick')
+  const [count, setCount] = useState(1)
+  const [mine, setMine] = useState<{ start: string; end: string }[] | null>(null)
 
   useEffect(() => {
     setHour12(host.timeFormat === '12h')
   }, [host.timeFormat, setHour12])
 
-  // range to compute: visible month (or week) in invitee tz, padded
+  // range to compute: visible month (or week) in invitee tz
   const range = useMemo(() => {
     if (view === 'week') return { from: weekStartDay.toUTC().toISO()!, to: weekStartDay.plus({ days: 7 }).toUTC().toISO()! }
     const m = month.setZone(tz, { keepLocalTime: true }).startOf('month')
     return { from: m.toUTC().toISO()!, to: m.plus({ months: 1 }).toUTC().toISO()! }
   }, [month, tz, view, weekStartDay])
+  // bookings are fetched for a wider window so weekly / monthly limits see the whole host week and month
+  const padded = useMemo(
+    () => ({ from: DateTime.fromISO(range.from).minus({ days: 38 }).toUTC().toISO()!, to: DateTime.fromISO(range.to).plus({ days: 38 }).toUTC().toISO()! }),
+    [range],
+  )
+  const memberIds = members.map((m) => m.user.id).join(',')
+  const busy = useLoad(
+    () => Promise.all(members.map((m) => store.getPublicBusy(m.user.id, padded.from, padded.to))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [memberIds, padded.from, padded.to],
+  )
 
-  const busy = useLoad(() => store.getPublicBusy(host.id, range.from, range.to), [host.id, range.from, range.to])
-
-  const slots = useMemo(() => {
-    if (!schedule || !busy.data) return []
-    const blocked = host.shabbat ? shabbatBlocks(host.shabbat, range.from, range.to) : []
-    return computeSlots({
-      eventType: et,
-      schedule,
-      duration,
-      from: range.from,
-      to: range.to,
-      now: new Date().toISOString(),
-      busy: busy.data.busy,
-      bookings: busy.data.bookings,
-      blocked,
-      ignoreBookingId: reschedule?.id,
-      weekStart: host.weekStart,
+  const slots: HostSlot[] = useMemo(() => {
+    if (!busy.data) return []
+    const perHost = members.map((m, i) => {
+      const u = m.user
+      const sched = u.id === et.ownerId ? schedule : m.schedules.find((s) => s.id === u.defaultScheduleId) ?? m.schedules[0]
+      if (!sched) return { id: u.id, slots: [] as Slot[] }
+      const data = busy.data![i]
+      return {
+        id: u.id,
+        slots: computeSlots({
+          eventType: et,
+          schedule: sched,
+          duration,
+          from: range.from,
+          to: range.to,
+          now: new Date().toISOString(),
+          busy: data.busy,
+          bookings: data.bookings,
+          blocked: [...(u.shabbat ? shabbatBlocks(u.shabbat, range.from, range.to) : []), ...oooSpans(u)],
+          ignoreBookingId: reschedule?.id,
+          weekStart: u.weekStart,
+          travel: u.travel,
+        }),
+      }
     })
-  }, [schedule, busy.data, host.shabbat, host.weekStart, range, et, duration, reschedule?.id])
+    const map = new Map<string, HostSlot>()
+    for (const h of perHost)
+      for (const sl of h.slots) {
+        const cur = map.get(sl.start)
+        if (cur) {
+          cur.hostIds.push(h.id)
+          cur.preferred = cur.preferred || sl.preferred
+        } else map.set(sl.start, { ...sl, hostIds: [h.id] })
+      }
+    let list = [...map.values()]
+    if (team?.mode === 'collective' || (!team && members.length > 1)) list = list.filter((x) => x.hostIds.length === members.length)
+    return list.sort((a, b) => a.start.localeCompare(b.start))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy.data, range, et, duration, reschedule?.id, memberIds, schedule, team?.mode])
 
-  const byDate = useMemo(() => groupByDate(slots, tz), [slots, tz])
+  const byDate = useMemo(() => groupByDate(slots, tz) as Map<string, HostSlot[]>, [slots, tz])
+
+  // invitee calendar overlay: busy times from their own Google calendar (read only, never stored)
+  useEffect(() => {
+    if (!mine) return
+    getInviteeBusy(range.from, range.to).then(setMine).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to])
+  const clashes = (sl: Slot) => !!mine?.some((m) => m.start < sl.end && m.end > sl.start)
 
   // auto select first available date in month
   useEffect(() => {
@@ -92,21 +178,60 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byDate, view, busy.loading])
 
+  useEffect(() => {
+    if (!embedded) return
+    const send = () => postToParent('height', { height: document.documentElement.scrollHeight })
+    send()
+    const ro = new ResizeObserver(send)
+    ro.observe(document.body)
+    return () => ro.disconnect()
+  }, [embedded])
+
   const daySlots = date ? byDate.get(date) ?? [] : []
   const hasPreferred = slots.some((s) => s.preferred)
+  const ooo = date ? (host.outOfOffice || []).find((o) => date >= o.start && date <= o.end) : undefined
+  const recurring = !reschedule && et.recurring && et.recurring.maxCount > 1 ? et.recurring : null
+  const occurrences = slot && recurring && count > 1 ? seriesStarts(slot.start, slot.end, recurring.freq, count, schedule?.timezone || host.timezone) : []
+
+  /** Who hosts the chosen slot: round robin picks one, collective books everyone. */
+  const assign = (sl: HostSlot): { ownerId: string; coHostIds: string[] } => {
+    if (!team) return { ownerId: host.id, coHostIds: [] }
+    if (team.mode === 'collective') {
+      const owner = members.some((m) => m.user.id === et.ownerId) ? et.ownerId : members[0].user.id
+      return { ownerId: owner, coHostIds: members.map((m) => m.user.id).filter((id) => id !== owner) }
+    }
+    const counts: Record<string, number> = {}
+    members.forEach((m, i) => (counts[m.user.id] = busy.data?.[i]?.bookings.length ?? 0))
+    return { ownerId: pickHost(sl.hostIds, et, counts), coHostIds: [] }
+  }
 
   if (!schedule) return <div className="card">{L('אין לוח זמינות לסוג אירוע זה.', 'No schedule for this event type.')}</div>
 
   return (
     <div className="booker rise">
       <aside className="booker-host sheet">
-        <div className="row" style={{ gap: 12 }}>
-          <Avatar name={host.name} src={host.avatarUrl} size={52} />
-          <div>
-            <div className="eyebrow">{L('נפגשים עם', 'Meeting with')}</div>
-            <div style={{ fontWeight: 600 }}>{host.name}</div>
+        {team ? (
+          <div className="row" style={{ gap: 12 }}>
+            <div className="avatar-stack">
+              {members.slice(0, 4).map((m) => (
+                <Avatar key={m.user.id} name={m.user.name} src={m.user.avatarUrl} size={40} />
+              ))}
+            </div>
+            <div>
+              <div className="eyebrow">{team.mode === 'collective' ? L('נפגשים עם כולם', 'Meeting with everyone') : L('נפגשים עם מי שפנוי', 'Meeting whoever is free')}</div>
+              <div style={{ fontWeight: 600 }}>{members.map((m) => m.user.name.split(' ')[0]).join(', ')}</div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="row" style={{ gap: 12 }}>
+            <Avatar name={host.name} src={host.avatarUrl} size={52} />
+            <div>
+              <div className="eyebrow">{L('נפגשים עם', 'Meeting with')}</div>
+              <div style={{ fontWeight: 600 }}>{host.name}</div>
+            </div>
+          </div>
+        )}
+        {personal?.greeting && <p className="greeting display">{personal.greeting}</p>}
         <hr className="rule" />
         <h2 className="booker-title">{et.title}</h2>
         {et.description && <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{et.description}</p>}
@@ -143,11 +268,50 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
               <span>{L('דורש אישור של המארח', 'Requires host approval')}</span>
             </li>
           )}
+          {et.price && et.price.amount > 0 && (
+            <li>
+              <span className="fact-glyph">₪</span>
+              <span>
+                {formatMoney(et.price.amount, et.price.currency, intl)}
+                {et.price.mode === 'deposit' && et.price.depositAmount ? ` · ${L('מקדמה', 'deposit')} ${formatMoney(et.price.depositAmount, et.price.currency, intl)}` : ''}
+                {et.price.refundHours ? <span className="tiny muted" style={{ display: 'block' }}>{L(`החזר מלא בביטול עד ${et.price.refundHours} שעות לפני`, `Full refund if cancelled ${et.price.refundHours}h before`)}</span> : null}
+              </span>
+            </li>
+          )}
+          {recurring && (
+            <li>
+              <Icon name="refresh" />
+              <select className="select input-sm" value={count} onChange={(e) => setCount(Number(e.target.value))} aria-label={L('חזרות', 'Repeats')}>
+                <option value={1}>{L('פגישה אחת', 'One meeting')}</option>
+                {Array.from({ length: recurring.maxCount - 1 }, (_, i) => i + 2).map((n) => (
+                  <option key={n} value={n}>
+                    {L(`${n} פגישות, ${recurring.freq === 'weekly' ? 'כל שבוע' : recurring.freq === 'biweekly' ? 'כל שבועיים' : 'כל חודש'}`, `${n} meetings, ${recurring.freq === 'weekly' ? 'weekly' : recurring.freq === 'biweekly' ? 'every 2 weeks' : 'monthly'}`)}
+                  </option>
+                ))}
+              </select>
+            </li>
+          )}
           <li>
             <Icon name="globe" />
             {et.lockTimezone ? <span>{tz}</span> : <TimezoneSelect value={tz} onChange={(v) => { setTz(v); setSlot(null) }} className="select input-sm" />}
           </li>
         </ul>
+        {isGoogleConfigured() && !reschedule && (
+          <button
+            className="btn btn-line btn-sm"
+            onClick={async () => {
+              if (mine) return setMine(null)
+              try {
+                setMine(await getInviteeBusy(range.from, range.to))
+              } catch (e) {
+                toast(String((e as Error).message), true)
+              }
+            }}
+          >
+            <Icon name="calendar" size={15} /> {mine ? L('הסתרת היומן שלי', 'Hide my calendar') : L('הצגת היומן שלי', 'Show my calendar')}
+          </button>
+        )}
+        {mine && <p className="tiny muted">{L('זמנים שמתנגשים ביומן שלך מסומנים. דבר לא נשמר.', 'Times that clash with your calendar are marked. Nothing is stored.')}</p>}
         {reschedule && (
           <div className="notice accent small">
             <Icon name="refresh" />
@@ -215,11 +379,31 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
                     <div className="display" style={{ fontSize: 20 }}>{DateTime.fromISO(date, { zone: tz }).setLocale(intl).toLocaleString({ weekday: 'long', day: 'numeric', month: 'long' })}</div>
                     {host.shabbat?.showHebrewDate && <div className="tiny muted">{hebrewDate(DateTime.fromISO(date).toJSDate(), locale)}</div>}
                   </div>
+                  {ooo && (
+                    <div className="notice small" style={{ marginBottom: 10 }}>
+                      <div>
+                        {L(`${host.name.split(' ')[0]} מחוץ למשרד בתאריכים האלה.`, `${host.name.split(' ')[0]} is out of office on these dates.`)} {ooo.note}
+                        {ooo.redirectUsername && (
+                          <>
+                            {' '}
+                            <a className="link" href={`#/${ooo.redirectUsername}`}>{L('לקביעה עם מחליף', 'Book a teammate instead')}</a>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="ticket-list">
                     {daySlots.map((s) => (
-                      <TicketRow key={s.start} s={s} tz={tz} selected={slot?.start === s.start} onPick={() => setSlot(s)} onNext={() => setStep('form')} />
+                      <TicketRow key={s.start} s={s} tz={tz} clash={clashes(s)} selected={slot?.start === s.start} onPick={() => setSlot(s)} onNext={() => setStep('form')} />
                     ))}
                   </div>
+                  {occurrences.length > 1 && (
+                    <ul className="list-plain series-list tiny">
+                      {occurrences.map((o, i) => (
+                        <li key={o.start} className="mono">{i + 1}. {fmtDate(o.start, tz, { weekday: 'short', day: 'numeric', month: 'short' })} {fmtTime(o.start, tz)}</li>
+                      ))}
+                    </ul>
+                  )}
                 </>
               ) : (
                 <p className="muted">{L('בחרו יום', 'Pick a day')}</p>
@@ -237,12 +421,18 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
       ) : (
         slot && (
           <BookingForm
-            profile={profile}
             et={et}
             slot={slot}
             tz={tz}
             reschedule={reschedule}
             linkToken={linkToken}
+            personal={personal}
+            prefill={prefill}
+            routingResponseId={routingResponseId || params.get('rr') || undefined}
+            count={recurring ? count : 1}
+            seriesFreq={recurring?.freq}
+            seriesTz={schedule.timezone}
+            assignment={assign(slot)}
             onBack={() => setStep('pick')}
             onConflict={() => {
               toast(L('מישהו תפס את המועד הזה רגע לפני. בחרו מועד אחר.', 'Someone just took that time. Please pick another.'), true)
@@ -255,9 +445,11 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
                 const full = await store.getUser(host.id)
                 if (full) runSync(store, full, { pullBusy: false }).catch(() => {})
               }
-              if (et.redirectUrl && !reschedule) {
+              postToParent('booked', { start: b.start, end: b.end, event: et.slug, status: b.status })
+              if (et.redirectUrl && !reschedule && /^https?:\/\//i.test(et.redirectUrl)) {
                 try {
                   const u = new URL(et.redirectUrl)
+                  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('scheme')
                   u.searchParams.set('name', b.attendee.name)
                   u.searchParams.set('email', b.attendee.email)
                   u.searchParams.set('start', b.start)
@@ -268,7 +460,7 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
                   /* fall through to confirmation */
                 }
               }
-              nav(`/b/${b.token}?new=1`)
+              nav(`/b/${b.token}?new=1${embedded ? '&embed=1' : ''}`)
             }}
           />
         )
@@ -277,12 +469,13 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken }
   )
 }
 
-function TicketRow({ s, tz, selected, onPick, onNext }: { s: Slot; tz: string; selected: boolean; onPick: () => void; onNext: () => void }) {
+function TicketRow({ s, tz, selected, onPick, onNext, clash }: { s: Slot; tz: string; selected: boolean; onPick: () => void; onNext: () => void; clash?: boolean }) {
   const { L, fmtTime } = useI18n()
   return (
     <div className={`ticket-row${selected ? ' open' : ''}`}>
-      <button className={`ticket${s.preferred ? ' preferred' : ''}`} aria-pressed={selected} onClick={onPick}>
+      <button className={`ticket${s.preferred ? ' preferred' : ''}${clash ? ' clash' : ''}`} aria-pressed={selected} onClick={onPick} title={clash ? L('מתנגש ביומן שלך', 'Clashes with your calendar') : undefined}>
         <span className="ltr">{fmtTime(s.start, tz)}</span>
+        {clash && <span className="seats">{L('תפוס אצלך', 'You are busy')}</span>}
         {s.seatsLeft !== undefined && <span className="seats">{L(`${s.seatsLeft} מקומות`, `${s.seatsLeft} seats`)}</span>}
       </button>
       {selected && (
@@ -294,7 +487,7 @@ function TicketRow({ s, tz, selected, onPick, onNext }: { s: Slot; tz: string; s
   )
 }
 
-function WeekView({ start, onStart, byDate, tz, selected, onPick }: { start: DateTime; onStart: (d: DateTime) => void; byDate: Map<string, Slot[]>; tz: string; selected: Slot | null; onPick: (s: Slot) => void }) {
+function WeekView({ start, onStart, byDate, tz, selected, onPick }: { start: DateTime; onStart: (d: DateTime) => void; byDate: Map<string, HostSlot[]>; tz: string; selected: HostSlot | null; onPick: (s: HostSlot) => void }) {
   const { L, fmtTime, intl, dir } = useI18n()
   const days = Array.from({ length: 7 }, (_, i) => start.plus({ days: i }))
   const canPrev = start > DateTime.now().setZone(tz).startOf('day')
@@ -344,22 +537,34 @@ function visible(q: Question, answers: Record<string, unknown>) {
 }
 
 function BookingForm({
-  profile,
   et,
   slot,
   tz,
   reschedule,
   linkToken,
+  personal,
+  prefill,
+  routingResponseId,
+  count,
+  seriesFreq,
+  seriesTz,
+  assignment,
   onBack,
   onDone,
   onConflict,
 }: {
-  profile: PublicProfile
   et: EventType
   slot: Slot
   tz: string
   reschedule?: Booking
   linkToken?: string
+  personal?: PersonalLink
+  prefill?: Record<string, string>
+  routingResponseId?: string
+  count: number
+  seriesFreq?: 'weekly' | 'biweekly' | 'monthly'
+  seriesTz: string
+  assignment: { ownerId: string; coHostIds: string[] }
   onBack: () => void
   onDone: (b: Booking) => void
   onConflict: () => void
@@ -368,9 +573,9 @@ function BookingForm({
   const store = useStore()
   const toast = useToast()
   const [params] = useSearchParams()
-  const p = (k: string) => params.get(k) || ''
-  const [name, setName] = useState(reschedule?.attendee.name || p('name'))
-  const [email, setEmail] = useState(reschedule?.attendee.email || p('email'))
+  const p = (k: string) => params.get(k) || prefill?.[k] || ''
+  const [name, setName] = useState(reschedule?.attendee.name || p('name') || personal?.name || '')
+  const [email, setEmail] = useState(reschedule?.attendee.email || p('email') || personal?.email || '')
   const [phone, setPhone] = useState(reschedule?.attendee.phone || p('phone'))
   const [waOptIn, setWaOptIn] = useState(reschedule?.attendee.whatsappOptIn ?? true)
   const [notes, setNotes] = useState(reschedule?.notes || p('notes'))
@@ -380,7 +585,7 @@ function BookingForm({
   const [answers, setAnswers] = useState<Record<string, string | string[] | boolean>>(() => {
     const a: Record<string, string | string[] | boolean> = { ...(reschedule?.answers || {}) }
     et.questions.forEach((q) => {
-      const v = params.get(q.id) ?? params.get('q_' + q.id)
+      const v = params.get(q.id) ?? params.get('q_' + q.id) ?? prefill?.[q.id] ?? null
       if (v != null) a[q.id] = q.type === 'multiselect' ? v.split(',') : q.type === 'boolean' || q.type === 'checkbox' ? v === 'true' : v
     })
     return a
@@ -395,12 +600,14 @@ function BookingForm({
   const validate = () => {
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = L('נא למלא שם', 'Name is required')
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = L('כתובת מייל לא תקינה', 'Invalid email')
+    if (!SINGLE_EMAIL.test(email.trim())) e.email = L('כתובת מייל לא תקינה', 'Invalid email')
     if ((phoneRequired || phone) && !isValidPhone(phone)) e.phone = L('מספר טלפון לא תקין', 'Invalid phone number')
     et.questions.forEach((q) => {
       if (!visible(q, answers) || !q.required) return
       const v = answers[q.id]
-      if (v === undefined || v === '' || v === false || (Array.isArray(v) && v.length === 0)) e[q.id] = L('שדה חובה', 'Required')
+      // a required yes/no question accepts "no"; only a consent checkbox must be ticked
+      const missing = v === undefined || v === '' || (Array.isArray(v) && v.length === 0) || (v === false && q.type === 'checkbox')
+      if (missing) e[q.id] = L('שדה חובה', 'Required')
     })
     setErrors(e)
     return Object.keys(e).length === 0
@@ -415,7 +622,14 @@ function BookingForm({
       const res = reschedule
         ? await store.rescheduleByToken(reschedule.token, slot.start, slot.end, reason)
         : await store.createBooking({
-            ownerId: profile.user.id,
+            ownerId: assignment.ownerId,
+            coHostIds: assignment.coHostIds,
+            teamId: et.teamId || undefined,
+            personalLinkId: personal?.id,
+            routingResponseId,
+            count,
+            seriesFreq,
+            seriesTz,
             eventTypeId: et.id,
             start: slot.start,
             end: slot.end,
@@ -433,6 +647,7 @@ function BookingForm({
       else if (res.error === 'conflict' || res.error === 'full') onConflict()
       else if (res.error === 'used') toast(L('הקישור הזה כבר נוצל', 'This link was already used'), true)
       else if (res.error === 'blocked') toast(L('לא ניתן להזמין עם כתובת זו', 'Booking with this email is not allowed'), true)
+      else if (res.error === 'limit') toast(L('כבר קבעת פגישה כזו לאחרונה. אפשר לנהל אותה מהמייל שקיבלת.', 'You already booked this recently. Manage it from your email.'), true)
       else toast(L('משהו השתבש, נסו שוב', 'Something went wrong, try again'), true)
     } catch (e) {
       toast(String((e as Error).message || e), true)
@@ -517,7 +732,7 @@ function BookingForm({
                 value={guestDraft}
                 onChange={(e) => setGuestDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if ((e.key === 'Enter' || e.key === ',') && /^\S+@\S+\.\S+$/.test(guestDraft.trim())) {
+                  if ((e.key === 'Enter' || e.key === ',') && SINGLE_EMAIL.test(guestDraft.trim()) && guests.length < 10) {
                     e.preventDefault()
                     setGuests([...guests, guestDraft.trim()])
                     setGuestDraft('')
@@ -547,7 +762,7 @@ function BookingForm({
   )
 }
 
-function QuestionField({ q, value, onChange, error }: { q: Question; value: unknown; onChange: (v: string | string[] | boolean) => void; error?: string }) {
+export function QuestionField({ q, value, onChange, error }: { q: Question; value: unknown; onChange: (v: string | string[] | boolean) => void; error?: string }) {
   const { L } = useI18n()
   const v = value as string
   const common = { className: `input${error ? ' err' : ''}`, value: v ?? '', placeholder: q.placeholder, onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value) }

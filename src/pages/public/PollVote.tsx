@@ -98,7 +98,23 @@ export default function PollVote() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return toast(L('נא למלא שם', 'Please enter your name'), true)
-    const r = await store.votePoll(poll.id, { id: uid(), name: name.trim(), email: email.trim(), votes: d, at: nowISO() })
+    // secret voter id kept in this browser so the voter can edit later; nobody else can overwrite it
+    const key = 'slotwise:voter:' + poll.id
+    let voterId = ''
+    try {
+      voterId = localStorage.getItem(key) || ''
+    } catch {
+      /* ignore */
+    }
+    if (!voterId) {
+      voterId = uid(24)
+      try {
+        localStorage.setItem(key, voterId)
+      } catch {
+        /* ignore */
+      }
+    }
+    const r = await store.votePoll(poll.id, { id: voterId, name: name.trim(), email: email.trim(), votes: d, at: nowISO() })
     if (r) {
       setDone(true)
       toast(L('ההצבעה נשמרה', 'Vote saved'))

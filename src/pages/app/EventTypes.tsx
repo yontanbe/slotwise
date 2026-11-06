@@ -9,7 +9,7 @@ import { useI18n } from '../../i18n'
 import { nowISO, token, uid } from '../../lib/id'
 import { appUrl } from '../../lib/links'
 import { locationName } from '../../lib/locations'
-import type { EventType } from '../../lib/types'
+import type { EventType, PersonalLink } from '../../lib/types'
 
 export default function EventTypes() {
   const me = useMe()
@@ -18,11 +18,20 @@ export default function EventTypes() {
   const copy = useCopy()
   const toast = useToast()
   const { L, fmtDate } = useI18n()
-  const data = useLoad(async () => ({ ets: await store.listEventTypes(me.id), links: await store.listLinks(me.id), schedules: await store.listSchedules(me.id) }), [me.id])
+  const data = useLoad(
+    async () => ({
+      ets: await store.listEventTypes(me.id),
+      links: await store.listLinks(me.id),
+      schedules: await store.listSchedules(me.id),
+      personal: await store.listKind('personal_link', me.id),
+    }),
+    [me.id],
+  )
+  const [pl, setPl] = useState<PersonalLink | null>(null)
   const [q, setQ] = useState('')
   const [linkFor, setLinkFor] = useState<EventType | null>(null)
   const [linkLabel, setLinkLabel] = useState('')
-  const ets = data.data?.ets ?? []
+  const ets = (data.data?.ets ?? []).filter((e) => !e.teamId)
   const links = data.data?.links ?? []
   const filtered = ets.filter((e) => !q || e.title.toLowerCase().includes(q.toLowerCase()))
 
@@ -110,6 +119,34 @@ export default function EventTypes() {
         </div>
       )}
 
+      <section>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <h2 style={{ fontSize: 24 }}>{L('קישורים אישיים', 'Personal links')}</h2>
+          <button className="btn btn-line btn-sm" disabled={!ets.length} onClick={() => setPl({ id: uid(), ownerId: me.id, slug: '', eventTypeId: ets[0]?.id ?? '', name: '', email: '', greeting: '', createdAt: nowISO() })}>
+            <Icon name="plus" size={14} /> {L('קישור אישי', 'Personal link')}
+          </button>
+        </div>
+        <p className="small muted" style={{ marginBottom: 8 }}>{L('קישור עם שם, ברכה ופרטים ממולאים מראש לאדם אחד, למשל ', 'A link with a name, greeting and prefilled details for one person, e.g. ')}<span className="ltr mono">/{me.username}/dana</span></p>
+        {(data.data?.personal ?? []).length > 0 && (
+          <div className="timetable">
+            {data.data!.personal.map((p) => (
+              <div key={p.id} className="tt-row">
+                <div className="tt-time"><b className="ltr">/{p.slug}</b></div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{p.name || p.slug}</div>
+                  <div className="tiny muted">{ets.find((e) => e.id === p.eventTypeId)?.title} {p.greeting ? `· ${p.greeting.slice(0, 50)}` : ''}</div>
+                </div>
+                <div className="row" style={{ gap: 4 }}>
+                  <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/${p.slug}`))}><Icon name="copy" size={14} /></button>
+                  <button className="icon-btn" onClick={() => setPl(p)}><Icon name="edit" size={14} /></button>
+                  <button className="icon-btn" onClick={() => store.deleteKind('personal_link', p.id)}><Icon name="trash" size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {links.length > 0 && (
         <section>
           <h2 style={{ fontSize: 24, marginBottom: 8 }}>{L('קישורים חד פעמיים', 'Single use links')}</h2>
@@ -141,6 +178,35 @@ export default function EventTypes() {
             </tbody>
           </table>
         </section>
+      )}
+
+      {pl && (
+        <Modal open onClose={() => setPl(null)}>
+          <div className="stack" style={{ ['--gap' as string]: '14px' }}>
+            <h3>{L('קישור אישי', 'Personal link')}</h3>
+            <Field label={L('כתובת', 'Slug')}>
+              <div className="input-group ltr"><span className="addon">/{me.username}/</span><input className="input" value={pl.slug} onChange={(e) => setPl({ ...pl, slug: e.target.value })} placeholder="dana" /></div>
+            </Field>
+            <Field label={L('סוג פגישה', 'Event type')}>
+              <select className="select" value={pl.eventTypeId} onChange={(e) => setPl({ ...pl, eventTypeId: e.target.value })}>
+                {ets.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
+              </select>
+            </Field>
+            <div className="grid-2">
+              <Field label={L('שם', 'Name')}><input className="input" value={pl.name} onChange={(e) => setPl({ ...pl, name: e.target.value })} /></Field>
+              <Field label={L('מייל', 'Email')}><input className="input ltr" value={pl.email} onChange={(e) => setPl({ ...pl, email: e.target.value })} /></Field>
+            </div>
+            <Field label={L('ברכה', 'Greeting')}><textarea className="textarea" style={{ minHeight: 70 }} value={pl.greeting} onChange={(e) => setPl({ ...pl, greeting: e.target.value })} /></Field>
+            <button className="btn btn-accent" onClick={async () => {
+              const slug = pl.slug.toLowerCase().replace(/[^a-z0-9-]/g, '')
+              if (slug.length < 2) return toast(L('כתובת באנגלית', 'A latin slug'), true)
+              if (ets.some((e) => e.slug === slug) || (data.data?.personal ?? []).some((x) => x.id !== pl.id && x.slug === slug)) return toast(L('הכתובת תפוסה', 'Slug taken'), true)
+              await store.saveKind('personal_link', { ...pl, slug })
+              copy(appUrl(`/${me.username}/${slug}`))
+              setPl(null)
+            }}>{L('שמירה והעתקה', 'Save and copy')}</button>
+          </div>
+        </Modal>
       )}
 
       <Modal open={!!linkFor} onClose={() => setLinkFor(null)}>
