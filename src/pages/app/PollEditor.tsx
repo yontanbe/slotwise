@@ -129,7 +129,7 @@ export default function PollEditor() {
                 <span className="small muted">{scores[i]} {L('נק׳', 'pts')}</span>
                 <div className="row" style={{ gap: 4 }}>
                   {p.voters.length > 0 && p.chosenIndex === null && <button className="btn btn-sm btn-accent" onClick={() => book(i)}>{L('קביעה', 'Book')}</button>}
-                  <button className="icon-btn" onClick={() => setP({ ...p, options: p.options.filter((_, j) => j !== i), voters: p.voters.map((v) => ({ ...v, votes: v.votes.filter((_, j) => j !== i) })) })}><Icon name="x" size={13} /></button>
+                  <button className="icon-btn" onClick={() => setP({ ...p, options: p.options.filter((_, j) => j !== i), voters: p.voters.map((v) => ({ ...v, votes: v.votes.filter((_, j) => j !== i) })) })} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={13} /></button>
                 </div>
               </li>
             ))}

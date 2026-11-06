@@ -75,10 +75,10 @@ export default function RoutingForms() {
                 <div className="tiny muted ltr">/{me.username}/forms/{f.slug}</div>
               </button>
               <div className="row" style={{ gap: 6 }}>
-                <button className="icon-btn" title={L('תשובות', 'Responses')} onClick={() => setResponsesOf(f)}><Icon name="inbox" size={15} /></button>
-                <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/forms/${f.slug}`))}><Icon name="copy" size={15} /></button>
-                <a className="icon-btn" href={appUrl(`/${me.username}/forms/${f.slug}`)} target="_blank" rel="noreferrer"><Icon name="eye" size={15} /></a>
-                <button className="icon-btn" onClick={async () => { if (window.confirm(L('למחוק?', 'Delete?'))) await store.deleteKind('routing_form', f.id) }}><Icon name="trash" size={14} /></button>
+                <button className="icon-btn" title={L('תשובות', 'Responses')} onClick={() => setResponsesOf(f)} aria-label={L('תשובות', 'Responses')}><Icon name="inbox" size={15} /></button>
+                <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/forms/${f.slug}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={15} /></button>
+                <a className="icon-btn" href={appUrl(`/${me.username}/forms/${f.slug}`)} target="_blank" rel="noreferrer" aria-label={L('תצוגה בלשונית חדשה', 'Preview in a new tab')}><Icon name="eye" size={15} /></a>
+                <button className="icon-btn" onClick={async () => { if (window.confirm(L('למחוק?', 'Delete?'))) await store.deleteKind('routing_form', f.id) }} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
               </div>
             </div>
           ))}
@@ -104,7 +104,7 @@ export default function RoutingForms() {
           <div className="stack">
             <div className="row between">
               <h3>{responsesOf.title}</h3>
-              <button className="icon-btn" onClick={() => setResponsesOf(null)}><Icon name="x" /></button>
+              <button className="icon-btn" onClick={() => setResponsesOf(null)} aria-label={L('הסרה', 'Remove')}><Icon name="x" /></button>
             </div>
             <table className="data">
               <thead>
@@ -176,7 +176,7 @@ function FormEditor({ form, options, onClose, onSave }: { form: RoutingForm; opt
       <div className="stack" style={{ ['--gap' as string]: '16px' }}>
         <div className="row between">
           <h3>{L('עריכת טופס', 'Edit form')}</h3>
-          <button className="icon-btn" onClick={onClose}><Icon name="x" /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={L('הסרה', 'Remove')}><Icon name="x" /></button>
         </div>
         <div className="grid-2">
           <Field label={L('כותרת', 'Title')}><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
@@ -194,7 +194,7 @@ function FormEditor({ form, options, onClose, onSave }: { form: RoutingForm; opt
                 {QTYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
               <label className="check small"><input type="checkbox" checked={q.required} onChange={(e) => setField(i, { required: e.target.checked })} /> {L('חובה', 'Required')}</label>
-              <button className="icon-btn" onClick={() => setF({ ...f, fields: f.fields.filter((_, j) => j !== i) })}><Icon name="trash" size={14} /></button>
+              <button className="icon-btn" onClick={() => setF({ ...f, fields: f.fields.filter((_, j) => j !== i) })} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
             </div>
             {['select', 'multiselect', 'radio'].includes(q.type) && (
               <textarea className="textarea" style={{ minHeight: 60 }} placeholder={L('אפשרות בכל שורה', 'One option per line')} value={(q.options || []).join('\n')} onChange={(e) => setField(i, { options: e.target.value.split('\n') })} />
@@ -215,7 +215,7 @@ function FormEditor({ form, options, onClose, onSave }: { form: RoutingForm; opt
                 <option value="all">{L('כל התנאים', 'all conditions')}</option>
                 <option value="any">{L('אחד התנאים', 'any condition')}</option>
               </select>
-              <button className="icon-btn" style={{ marginInlineStart: 'auto' }} onClick={() => setF({ ...f, rules: f.rules.filter((_, j) => j !== ri) })}><Icon name="trash" size={14} /></button>
+              <button className="icon-btn" style={{ marginInlineStart: 'auto' }} onClick={() => setF({ ...f, rules: f.rules.filter((_, j) => j !== ri) })} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
             </div>
             {r.conditions.map((c, ci) => {
               const upd = (p: Partial<RoutingCondition>) => setF({ ...f, rules: f.rules.map((x, j) => (j === ri ? { ...x, conditions: x.conditions.map((y, k) => (k === ci ? { ...y, ...p } : y)) } : x)) })

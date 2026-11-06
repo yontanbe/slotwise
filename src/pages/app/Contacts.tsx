@@ -50,7 +50,7 @@ export default function Contacts() {
       <PageHead title={L('אנשי קשר', 'Contacts')} sub={L('כל מי שקבע איתך, עם ההיסטוריה המלאה.', 'Everyone who booked you, with full history.')} />
       <div className="input-group" style={{ maxWidth: 420 }}>
         <span className="addon"><Icon name="search" size={16} /></span>
-        <input className="input" placeholder={L('חיפוש', 'Search')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <input aria-label={L('חיפוש', 'Search')} className="input" placeholder={L('חיפוש', 'Search')} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {contacts.length === 0 ? (
         <Empty title={L('עוד אין אנשי קשר', 'No contacts yet')} />

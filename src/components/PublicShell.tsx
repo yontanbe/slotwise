@@ -11,7 +11,7 @@ export function Prefs() {
   const [dark, setDark] = useState(isDark())
   return (
     <div className="row" style={{ gap: 6 }}>
-      <button className="icon-btn" onClick={() => setLocale(locale === 'he' ? 'en' : 'he')} aria-label="language" title="עברית / English">
+      <button className="icon-btn" onClick={() => setLocale(locale === 'he' ? 'en' : 'he')} aria-label={locale === 'he' ? 'Switch to English' : 'החלפה לעברית'} title={locale === 'he' ? 'English' : 'עברית'}>
         <span style={{ fontSize: 12, fontWeight: 700 }}>{locale === 'he' ? 'EN' : 'עב'}</span>
       </button>
       <button
@@ -20,7 +20,7 @@ export function Prefs() {
           setTheme(dark ? 'light' : 'dark')
           setDark(!dark)
         }}
-        aria-label="theme"
+        aria-label={dark ? 'Light mode / מצב בהיר' : 'Dark mode / מצב כהה'}
       >
         <Icon name={dark ? 'sun' : 'moon'} size={16} />
       </button>

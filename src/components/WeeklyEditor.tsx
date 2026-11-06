@@ -2,15 +2,15 @@ import { useI18n } from '../i18n'
 import type { TimeRange } from '../lib/types'
 import { Icon, Toggle } from './ui'
 
-export function RangeEditor({ ranges, onChange }: { ranges: TimeRange[]; onChange: (r: TimeRange[]) => void }) {
+export function RangeEditor({ ranges, onChange, label }: { ranges: TimeRange[]; onChange: (r: TimeRange[]) => void; label?: string }) {
   const { L } = useI18n()
   return (
     <div className="stack" style={{ ['--gap' as string]: '6px' }}>
       {ranges.map((r, i) => (
         <div key={i} className="row" style={{ gap: 6 }}>
-          <input className="input input-sm ltr time-in" type="time" value={r.start} onChange={(e) => onChange(ranges.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)))} />
+          <input aria-label={`${label ?? ''} ${L('התחלה', 'start')} ${i + 1}`} className="input input-sm ltr time-in" type="time" value={r.start} onChange={(e) => onChange(ranges.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)))} />
           <span className="muted">–</span>
-          <input className="input input-sm ltr time-in" type="time" value={r.end === '24:00' ? '23:59' : r.end} onChange={(e) => onChange(ranges.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))} />
+          <input aria-label={`${label ?? ''} ${L('סיום', 'end')} ${i + 1}`} className="input input-sm ltr time-in" type="time" value={r.end === '24:00' ? '23:59' : r.end} onChange={(e) => onChange(ranges.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))} />
           <button type="button" className="icon-btn" onClick={() => onChange(ranges.filter((_, j) => j !== i))} aria-label={L('הסרה', 'Remove')}>
             <Icon name="x" size={14} />
           </button>
@@ -44,9 +44,9 @@ export default function WeeklyEditor({ weekly, onChange, weekStart = 0 }: { week
               <Toggle checked={on} onChange={(v) => set(d, v ? [{ start: '09:00', end: '17:00' }] : [])} label={weekdayShort(d)} />
               <b className="weekly-day">{weekdayShort(d)}</b>
             </div>
-            {on ? <RangeEditor ranges={weekly[d]} onChange={(r) => set(d, r)} /> : <span className="muted small">{L('לא זמין', 'Unavailable')}</span>}
+            {on ? <RangeEditor label={weekdayShort(d)} ranges={weekly[d]} onChange={(r) => set(d, r)} /> : <span className="muted small">{L('לא זמין', 'Unavailable')}</span>}
             {on && (
-              <button type="button" className="icon-btn weekly-copy" onClick={() => onChange(weekly.map((x) => (x.length ? weekly[d].map((r) => ({ ...r })) : x)))} title={L('העתקה לכל הימים הפעילים', 'Copy to all active days')}>
+              <button type="button" className="icon-btn weekly-copy" onClick={() => onChange(weekly.map((x) => (x.length ? weekly[d].map((r) => ({ ...r })) : x)))} title={L('העתקה לכל הימים הפעילים', 'Copy to all active days')} aria-label={L('העתקה', 'Copy')}>
                 <Icon name="copy" size={14} />
               </button>
             )}

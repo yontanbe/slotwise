@@ -89,7 +89,7 @@ export default function Settings() {
             <Field label={L('שם משתמש', 'Username')} hint={me.previousUsernames.length ? L(`הפניות פעילות: ${me.previousUsernames.join(', ')}`, `Redirects: ${me.previousUsernames.join(', ')}`) : L('קישורים ישנים יופנו אוטומטית', 'Old links redirect automatically')}>
               <div className="input-group ltr">
                 <span className="addon">slotwise/</span>
-                <input className="input" value={u.username} onChange={(e) => set('username', e.target.value)} />
+                <input aria-label={L('שם משתמש', 'Username')} className="input" value={u.username} onChange={(e) => set('username', e.target.value)} />
               </div>
             </Field>
           </div>
@@ -204,7 +204,7 @@ export default function Settings() {
               <input className="input input-sm ltr" type="date" style={{ width: 150 }} value={o.end} onChange={(e) => set('outOfOffice', u.outOfOffice!.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))} />
               <input className="input input-sm grow" placeholder={L('הערה למוזמנים', 'Note for invitees')} value={o.note} onChange={(e) => set('outOfOffice', u.outOfOffice!.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))} />
               <input className="input input-sm ltr" style={{ width: 140 }} placeholder={L('מחליף (username)', 'Teammate username')} value={o.redirectUsername || ''} onChange={(e) => set('outOfOffice', u.outOfOffice!.map((x, j) => (j === i ? { ...x, redirectUsername: e.target.value.trim() || undefined } : x)))} />
-              <button className="icon-btn" onClick={() => set('outOfOffice', u.outOfOffice!.filter((_, j) => j !== i))}><Icon name="x" size={13} /></button>
+              <button className="icon-btn" onClick={() => set('outOfOffice', u.outOfOffice!.filter((_, j) => j !== i))} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={13} /></button>
             </div>
           ))}
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => { const d = new Date().toISOString().slice(0, 10); set('outOfOffice', [...(u.outOfOffice || []), { id: uid(6), start: d, end: d, note: '' }]) }}>
@@ -225,7 +225,7 @@ export default function Settings() {
               <span className="muted">–</span>
               <input className="input input-sm ltr" type="date" style={{ width: 150 }} value={t.end} onChange={(e) => set('travel', u.travel!.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))} />
               <div style={{ minWidth: 220, flex: 1 }}><TimezoneSelect className="select input-sm" value={t.timezone} onChange={(tz) => set('travel', u.travel!.map((x, j) => (j === i ? { ...x, timezone: tz } : x)))} /></div>
-              <button className="icon-btn" onClick={() => set('travel', u.travel!.filter((_, j) => j !== i))}><Icon name="x" size={13} /></button>
+              <button className="icon-btn" onClick={() => set('travel', u.travel!.filter((_, j) => j !== i))} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={13} /></button>
             </div>
           ))}
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => { const d = new Date().toISOString().slice(0, 10); set('travel', [...(u.travel || []), { id: uid(6), start: d, end: d, timezone: 'Europe/London' }]) }}>

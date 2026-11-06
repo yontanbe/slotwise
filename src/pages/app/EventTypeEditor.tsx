@@ -101,7 +101,7 @@ export default function EventTypeEditor() {
               <Field label={L('כתובת', 'URL')}>
                 <div className="input-group ltr">
                   <span className="addon">/{me.username}/</span>
-                  <input className="input" value={et.slug} onChange={(e) => set('slug', e.target.value)} />
+                  <input aria-label={L('כתובת', 'URL slug')} className="input" value={et.slug} onChange={(e) => set('slug', e.target.value)} />
                 </div>
               </Field>
             </div>
@@ -113,7 +113,7 @@ export default function EventTypeEditor() {
                 {BRAND_COLORS.map((c) => (
                   <button key={c} className="swatch" style={{ background: c }} aria-pressed={et.color === c} onClick={() => set('color', c)} aria-label={c} />
                 ))}
-                <input type="color" value={et.color} onChange={(e) => set('color', e.target.value)} className="swatch-input" />
+                <input type="color" value={et.color} onChange={(e) => set('color', e.target.value)} className="swatch-input" aria-label={L('צבע מותאם', 'Custom color')} />
               </div>
             </Field>
             <Field label={L('משכים אפשריים (המוזמן בוחר)', 'Durations (invitee picks)')} hint={L('לחצו על משך כדי להגדיר אותו כברירת מחדל', 'Click a duration to make it the default')}>
@@ -143,7 +143,7 @@ export default function EventTypeEditor() {
                 {et.locations.map((l, i) => (
                   <div key={i} className="row" style={{ gap: 8 }}>
                     <span className="loc-glyph">{LOCATION_GLYPH[l.type]}</span>
-                    <select className="select input-sm" style={{ maxWidth: 220 }} value={l.type} onChange={(e) => set('locations', et.locations.map((x, j) => (j === i ? { type: e.target.value as typeof l.type } : x)))}>
+                    <select aria-label={L('סוג מיקום', 'Location type')} className="select input-sm" style={{ maxWidth: 220 }} value={l.type} onChange={(e) => set('locations', et.locations.map((x, j) => (j === i ? { type: e.target.value as typeof l.type } : x)))}>
                       {LOCATION_TYPES.map((t) => <option key={t} value={t}>{locationName(t, L)}</option>)}
                     </select>
                     {['zoom', 'teams', 'in_person', 'link', 'phone_invitee'].includes(l.type) && (
@@ -154,7 +154,7 @@ export default function EventTypeEditor() {
                         onChange={(e) => set('locations', et.locations.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
                       />
                     )}
-                    <button className="icon-btn" onClick={() => set('locations', et.locations.filter((_, j) => j !== i))}><Icon name="x" size={14} /></button>
+                    <button className="icon-btn" onClick={() => set('locations', et.locations.filter((_, j) => j !== i))} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={14} /></button>
                   </div>
                 ))}
                 <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => set('locations', [...et.locations, { type: 'meet' }])}>
@@ -231,7 +231,7 @@ export default function EventTypeEditor() {
               </Field>
             </div>
             <label className="row" style={{ gap: 10 }}>
-              <Toggle checked={et.firstSlotOnly} onChange={(v) => set('firstSlotOnly', v)} />
+              <Toggle label={L('רק הזמן הראשון בכל יום', 'Only the first slot each day')} checked={et.firstSlotOnly} onChange={(v) => set('firstSlotOnly', v)} />
               <span>{L('להציג רק את הזמן הראשון בכל יום', 'Only show the first slot of each day')}</span>
             </label>
             <hr className="rule" />
@@ -262,7 +262,7 @@ export default function EventTypeEditor() {
         {tab === 'advanced' && (
           <div className="stack" style={{ ['--gap' as string]: '20px' }}>
             <Setting title={L('דורש אישור', 'Requires confirmation')} text={L('ההזמנה תמתין לאישור שלך לפני שתיכנס ליומן.', 'Bookings wait for your approval before hitting the calendar.')}>
-              <Toggle checked={et.requiresConfirmation} onChange={(v) => set('requiresConfirmation', v)} />
+              <Toggle label={L('דורש אישור', 'Requires confirmation')} checked={et.requiresConfirmation} onChange={(v) => set('requiresConfirmation', v)} />
             </Setting>
             {et.requiresConfirmation && (
               <Setting title={L('דחייה אוטומטית', 'Auto decline')} text={L('בקשה שלא אושרה תוך X שעות תידחה ותשוחרר.', 'Requests not approved within X hours are declined and freed.')}>
@@ -281,11 +281,11 @@ export default function EventTypeEditor() {
                     <input className="input input-sm" type="number" min={2} max={52} style={{ width: 70 }} value={et.recurring.maxCount} onChange={(e) => set('recurring', { ...et.recurring!, maxCount: Math.min(52, Math.max(2, Number(e.target.value))) })} />
                   </>
                 )}
-                <Toggle checked={!!et.recurring} onChange={(v) => set('recurring', v ? { freq: 'weekly', maxCount: 4 } : null)} />
+                <Toggle label={L('פגישה חוזרת', 'Recurring')} checked={!!et.recurring} onChange={(v) => set('recurring', v ? { freq: 'weekly', maxCount: 4 } : null)} />
               </div>
             </Setting>
             <Setting title={L('תשלום', 'Payment')} text={L('מחיר, מקדמה ומדיניות החזר. בלי שרת: Stripe Payment Link. עם שרת: Stripe Checkout אוטומטי.', 'Price, deposit and refund policy. Without a server: a Stripe Payment Link. With one: automatic Stripe Checkout.')}>
-              <Toggle checked={!!et.price} onChange={(v) => set('price', v ? { amount: 200, currency: 'ILS', mode: 'full', refundHours: 24 } : null)} />
+              <Toggle label={L('תשלום', 'Payment')} checked={!!et.price} onChange={(v) => set('price', v ? { amount: 200, currency: 'ILS', mode: 'full', refundHours: 24 } : null)} />
             </Setting>
             {et.price && (
               <div className="card-flat stack" style={{ ['--gap' as string]: '12px' }}>
@@ -333,7 +333,7 @@ export default function EventTypeEditor() {
                     <span className="small">{L('ימים', 'days')}</span>
                   </>
                 )}
-                <Toggle checked={!!et.perInviteeLimit} onChange={(v) => set('perInviteeLimit', v ? { count: 1, days: 30 } : null)} />
+                <Toggle label={L('הגבלה לכל מוזמן', 'Per invitee limit')} checked={!!et.perInviteeLimit} onChange={(v) => set('perInviteeLimit', v ? { count: 1, days: 30 } : null)} />
               </div>
             </Setting>
             {et.teamId && (
@@ -353,7 +353,7 @@ export default function EventTypeEditor() {
                         <input className="input input-sm" type="number" min={1} max={100} style={{ width: 70 }} title={L('משקל', 'Weight')} value={h.weight} onChange={(e) => set('hosts', et.hosts!.map((x, j) => (j === i ? { ...x, weight: Number(e.target.value) } : x)))} />
                       </>
                     )}
-                    <button className="icon-btn" disabled={(et.hosts || []).length < 2} onClick={() => set('hosts', et.hosts!.filter((_, j) => j !== i))}><Icon name="x" size={12} /></button>
+                    <button className="icon-btn" disabled={(et.hosts || []).length < 2} onClick={() => set('hosts', et.hosts!.filter((_, j) => j !== i))} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -361,14 +361,14 @@ export default function EventTypeEditor() {
             <Setting title={L('אירוע קבוצתי (מושבים)', 'Group event (seats)')} text={L('כמה אנשים יכולים להזמין את אותו מועד.', 'Several people can book the same time.')}>
               <div className="row" style={{ gap: 8 }}>
                 {et.seats ? <input className="input input-sm" type="number" min={2} style={{ width: 90 }} value={et.seats} onChange={(e) => set('seats', Math.max(2, Number(e.target.value)))} /> : null}
-                <Toggle checked={!!et.seats} onChange={(v) => set('seats', v ? 5 : null)} />
+                <Toggle label={L('אירוע קבוצתי', 'Group event')} checked={!!et.seats} onChange={(v) => set('seats', v ? 5 : null)} />
               </div>
             </Setting>
             <Setting title={L('נעילת אזור זמן', 'Lock timezone')} text={L('לפגישות פרונטליות: הזמנים יוצגו תמיד באזור הזמן שלך.', 'For in person events: always show times in your timezone.')}>
-              <Toggle checked={et.lockTimezone} onChange={(v) => set('lockTimezone', v)} />
+              <Toggle label={L('נעילת אזור זמן', 'Lock timezone')} checked={et.lockTimezone} onChange={(v) => set('lockTimezone', v)} />
             </Setting>
             <Setting title={L('מוסתר מהפרופיל', 'Hidden from profile')} text={L('רק מי שיש לו את הקישור יוכל להזמין.', 'Only people with the link can book.')}>
-              <Toggle checked={et.hidden} onChange={(v) => set('hidden', v)} />
+              <Toggle label={L('מוסתר מהפרופיל', 'Hidden from profile')} checked={et.hidden} onChange={(v) => set('hidden', v)} />
             </Setting>
             <Field label={L('הפניה אחרי הזמנה', 'Redirect after booking')} hint={L('נוסיף name, email, start ו-event לכתובת. בלי דף אזהרה.', 'We append name, email, start and event. No interstitial page.')}>
               <input className={`input ltr${et.redirectUrl && !/^https?:\/\//i.test(et.redirectUrl) ? ' err' : ''}`} type="url" placeholder="https://" value={et.redirectUrl} onChange={(e) => set('redirectUrl', e.target.value)} />
@@ -428,8 +428,8 @@ function QuestionsEditor({ questions, onChange }: { questions: Question[]; onCha
               {QTYPES.map((t) => <option key={t} value={t}>{typeName[t]}</option>)}
             </select>
             <label className="check small"><input type="checkbox" checked={q.required} onChange={(e) => upd(i, { required: e.target.checked })} /> {L('חובה', 'Required')}</label>
-            <button className="icon-btn" disabled={i === 0} onClick={() => { const a = [...questions]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; onChange(a) }}>↑</button>
-            <button className="icon-btn" onClick={() => onChange(questions.filter((_, j) => j !== i))}><Icon name="trash" size={14} /></button>
+            <button className="icon-btn" disabled={i === 0} onClick={() => { const a = [...questions]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; onChange(a) }} aria-label={L('הזזה למעלה', 'Move up')}>↑</button>
+            <button className="icon-btn" onClick={() => onChange(questions.filter((_, j) => j !== i))} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
           </div>
           {['select', 'multiselect', 'radio', 'checkbox'].includes(q.type) && (
             <Field label={L('אפשרויות (שורה לכל אחת)', 'Options (one per line)')}>

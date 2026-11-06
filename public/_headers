@@ -7,9 +7,9 @@
 # - style-src needs 'unsafe-inline' for React style attributes.
 # - frame-ancestors * because the booking page is embedded on other sites (embed.js, #/...?embed=1).
 #   _headers cannot vary by hash route, so the whole app is frameable. No X-Frame-Options for the same reason.
-# - img-src https: because avatars can be any https URL.
+# - img-src https: because avatars can be any https URL. frame-src 'self' allows previews of the app's own embed.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://*.supabase.co wss://*.supabase.co https:; frame-src https://accounts.google.com/gsi/ https://accounts.google.com; worker-src 'self'; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; frame-ancestors *; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://*.supabase.co wss://*.supabase.co https:; frame-src 'self' https://accounts.google.com/gsi/ https://accounts.google.com; worker-src 'self'; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; frame-ancestors *; upgrade-insecure-requests
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=(), payment=(self)

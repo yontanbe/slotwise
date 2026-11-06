@@ -101,11 +101,11 @@ export default function EventTypes() {
                 <hr className="rule" style={{ margin: '14px 0 10px' }} />
                 <div className="row between">
                   <div className="row" style={{ gap: 4 }}>
-                    <button className="icon-btn" title={L('העתקת קישור', 'Copy link')} onClick={() => copy(appUrl(`/${me.username}/${e.slug}`))}><Icon name="copy" size={15} /></button>
-                    <button className="icon-btn" title={L('קישור חד פעמי', 'Single use link')} onClick={() => setLinkFor(e)}><Icon name="link" size={15} /></button>
-                    <a className="icon-btn" title={L('תצוגה', 'Preview')} href={appUrl(`/${me.username}/${e.slug}`)} target="_blank" rel="noreferrer"><Icon name="eye" size={15} /></a>
-                    <button className="icon-btn" title={L('שכפול', 'Duplicate')} onClick={() => duplicate(e)}><Icon name="cards" size={15} /></button>
-                    <button className="icon-btn" title={L('מחיקה', 'Delete')} onClick={() => remove(e)}><Icon name="trash" size={15} /></button>
+                    <button className="icon-btn" title={L('העתקת קישור', 'Copy link')} onClick={() => copy(appUrl(`/${me.username}/${e.slug}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={15} /></button>
+                    <button className="icon-btn" title={L('קישור חד פעמי', 'Single use link')} onClick={() => setLinkFor(e)} aria-label={L('קישור', 'Link')}><Icon name="link" size={15} /></button>
+                    <a className="icon-btn" title={L('תצוגה', 'Preview')} href={appUrl(`/${me.username}/${e.slug}`)} target="_blank" rel="noreferrer" aria-label={L('תצוגה בלשונית חדשה', 'Preview in a new tab')}><Icon name="eye" size={15} /></a>
+                    <button className="icon-btn" title={L('שכפול', 'Duplicate')} onClick={() => duplicate(e)} aria-label={L('שכפול', 'Duplicate')}><Icon name="cards" size={15} /></button>
+                    <button className="icon-btn" title={L('מחיקה', 'Delete')} onClick={() => remove(e)} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={15} /></button>
                   </div>
                   <div className="row" style={{ gap: 4 }}>
                     <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} aria-label="up">↑</button>
@@ -137,9 +137,9 @@ export default function EventTypes() {
                   <div className="tiny muted">{ets.find((e) => e.id === p.eventTypeId)?.title} {p.greeting ? `· ${p.greeting.slice(0, 50)}` : ''}</div>
                 </div>
                 <div className="row" style={{ gap: 4 }}>
-                  <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/${p.slug}`))}><Icon name="copy" size={14} /></button>
-                  <button className="icon-btn" onClick={() => setPl(p)}><Icon name="edit" size={14} /></button>
-                  <button className="icon-btn" onClick={() => store.deleteKind('personal_link', p.id)}><Icon name="trash" size={14} /></button>
+                  <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/${p.slug}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button>
+                  <button className="icon-btn" onClick={() => setPl(p)} aria-label={L('עריכה', 'Edit')}><Icon name="edit" size={14} /></button>
+                  <button className="icon-btn" onClick={() => store.deleteKind('personal_link', p.id)} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
                 </div>
               </div>
             ))}
@@ -169,8 +169,8 @@ export default function EventTypes() {
                   <td>{l.usedBookingId ? <span className="stamp mute">{L('נוצל', 'Used')}</span> : <span className="stamp ok">{L('פעיל', 'Active')}</span>}</td>
                   <td>
                     <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                      {!l.usedBookingId && <button className="icon-btn" onClick={() => copy(appUrl(`/d/${l.token}`))}><Icon name="copy" size={14} /></button>}
-                      <button className="icon-btn" onClick={() => store.deleteLink(l.id)}><Icon name="trash" size={14} /></button>
+                      {!l.usedBookingId && <button className="icon-btn" onClick={() => copy(appUrl(`/d/${l.token}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button>}
+                      <button className="icon-btn" onClick={() => store.deleteLink(l.id)} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -185,7 +185,7 @@ export default function EventTypes() {
           <div className="stack" style={{ ['--gap' as string]: '14px' }}>
             <h3>{L('קישור אישי', 'Personal link')}</h3>
             <Field label={L('כתובת', 'Slug')}>
-              <div className="input-group ltr"><span className="addon">/{me.username}/</span><input className="input" value={pl.slug} onChange={(e) => setPl({ ...pl, slug: e.target.value })} placeholder="dana" /></div>
+              <div className="input-group ltr"><span className="addon">/{me.username}/</span><input aria-label={L('כתובת', 'Address slug')} className="input" value={pl.slug} onChange={(e) => setPl({ ...pl, slug: e.target.value })} placeholder="dana" /></div>
             </Field>
             <Field label={L('סוג פגישה', 'Event type')}>
               <select className="select" value={pl.eventTypeId} onChange={(e) => setPl({ ...pl, eventTypeId: e.target.value })}>
@@ -193,7 +193,7 @@ export default function EventTypes() {
               </select>
             </Field>
             <div className="grid-2">
-              <Field label={L('שם', 'Name')}><input className="input" value={pl.name} onChange={(e) => setPl({ ...pl, name: e.target.value })} /></Field>
+              <Field label={L('שם', 'Name')}><input aria-label={L('כתובת', 'Address slug')} className="input" value={pl.name} onChange={(e) => setPl({ ...pl, name: e.target.value })} /></Field>
               <Field label={L('מייל', 'Email')}><input className="input ltr" value={pl.email} onChange={(e) => setPl({ ...pl, email: e.target.value })} /></Field>
             </div>
             <Field label={L('ברכה', 'Greeting')}><textarea className="textarea" style={{ minHeight: 70 }} value={pl.greeting} onChange={(e) => setPl({ ...pl, greeting: e.target.value })} /></Field>

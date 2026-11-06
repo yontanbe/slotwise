@@ -575,7 +575,7 @@ tr.poll-total td {
   color: color-mix(in srgb, var(--paper) 70%, transparent);
 }
 .cta-band .btn {
-  --bg: var(--accent);
+  --bg: var(--accent-strong);
   --fg: var(--on-accent);
 }
 
@@ -1023,7 +1023,7 @@ tr.poll-total td {
   padding: 6px 12px;
   margin-top: 6px;
   border-radius: 0 6px 6px 6px;
-  background: var(--c);
+  background: color-mix(in srgb, var(--c) 72%, #000);
   color: #fff;
   font-family: var(--display);
   font-size: 15px;
@@ -1043,7 +1043,7 @@ tr.poll-total td {
   inset-inline-start: 0;
   width: 40%;
   height: 7px;
-  background: var(--c);
+  background: color-mix(in srgb, var(--c) 72%, #000);
   border-radius: 4px 6px 0 0;
 }
 .booking-row .booking-name {
@@ -1660,7 +1660,7 @@ tr.poll-total td {
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   font-family: var(--mono);
   -webkit-mask: radial-gradient(circle 11px at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
@@ -1708,7 +1708,6 @@ tr.poll-total td {
 .fan-meta {
   font-family: var(--sans);
   font-size: 12px;
-  opacity: 0.8;
 }
 @keyframes fanin {
   from {
@@ -2234,7 +2233,7 @@ tr.poll-total td {
   color: var(--ink);
 }
 .guide-toc a[aria-current='true'] .mono {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .guide-sec {
   scroll-margin-top: 90px;
@@ -2288,7 +2287,7 @@ tr.poll-total td {
   border-bottom: 1px dashed var(--rule-2);
 }
 .guide-steps li > .mono {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   padding-top: 2px;
 }
@@ -2486,4 +2485,8 @@ tr.poll-total td {
 .public-top a.btn-line,
 .public-top a.btn-ghost {
   color: var(--ink);
+}
+
+.guide-toc .mono {
+  color: var(--ink-3);
 }

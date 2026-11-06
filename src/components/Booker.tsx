@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { seriesStarts, type PublicProfile, type PublicUser } from '../data/store'
 import { useLoad, useStore } from '../data/StoreProvider'
@@ -406,7 +406,7 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken, 
                   )}
                 </>
               ) : (
-                <p className="muted">{L('בחרו יום', 'Pick a day')}</p>
+                <p className="muted">{L('בחרו יום מסומן בלוח כדי לראות את השעות הפנויות.', 'Pick a highlighted day to see open times.')}</p>
               )}
             </section>
           )}
@@ -658,8 +658,15 @@ function BookingForm({
 
   const setA = (id: string, v: string | string[] | boolean) => setAnswers((a) => ({ ...a, [id]: v }))
 
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    // keyboard and screen reader users land on the form, not on <body>
+    const first = formRef.current?.querySelector<HTMLElement>('input:not(.sr-only),textarea,select')
+    first?.focus({ preventScroll: false })
+  }, [])
+
   return (
-    <form className="booker-form" onSubmit={submit} noValidate>
+    <form ref={formRef} className="booker-form" onSubmit={submit} noValidate aria-label={L('פרטי ההזמנה', 'Booking details')}>
       <button type="button" className="btn btn-ghost btn-sm" onClick={onBack} style={{ alignSelf: 'flex-start' }}>
         <Icon name={dir === 'rtl' ? 'chevR' : 'chevL'} /> {L('חזרה', 'Back')}
       </button>
@@ -720,7 +727,7 @@ function BookingForm({
               {guests.map((g) => (
                 <span key={g} className="chip">
                   <span className="ltr">{g}</span>
-                  <button type="button" className="link" aria-label="remove" onClick={() => setGuests(guests.filter((x) => x !== g))}>
+                  <button type="button" className="link" aria-label={L('הסרת אורח', 'Remove guest')} onClick={() => setGuests(guests.filter((x) => x !== g))}>
                     <Icon name="x" size={12} />
                   </button>
                 </span>

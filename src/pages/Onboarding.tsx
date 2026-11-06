@@ -102,7 +102,7 @@ export default function Onboarding() {
               <Field label={L('הקישור שלך', 'Your link')} hint={L('אותיות באנגלית, ספרות ומקף', 'Latin letters, digits and dashes')}>
                 <div className="input-group ltr">
                   <span className="addon">slotwise/</span>
-                  <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+                  <input aria-label={L('הקישור שלך', 'Your link')} className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
                 </div>
               </Field>
               <div className="grid-2">

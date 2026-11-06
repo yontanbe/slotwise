@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMe } from '../auth/AuthProvider'
 import { useLoad, useStore } from '../data/StoreProvider'
 import { useI18n } from '../i18n'
 import { isGoogleConnected } from '../integrations/google'
-import { Icon } from './ui'
+import { Icon, useFocusTrap } from './ui'
 import { newSchedule } from '../data/defaults'
 
 const lsGet = (k: string) => {
@@ -108,6 +108,11 @@ export function ProductTour({ force, onDone }: { force?: boolean; onDone?: () =>
     { target: '[data-tour="share"]', title: L('הקישור שלכם', 'Your link'), text: L('לחיצה מעתיקה אותו. שלחו, והפגישות יתחילו להגיע.', 'Click to copy it. Send it and bookings start coming in.') },
   ]
   const step = steps[i]
+  const popRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(popRef, open, '.tour-next')
+  useEffect(() => {
+    popRef.current?.querySelector<HTMLElement>('.tour-next')?.focus({ preventScroll: true })
+  }, [i])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -149,20 +154,20 @@ export function ProductTour({ force, onDone }: { force?: boolean; onDone?: () =>
     : { top: window.innerHeight / 2 - 110, left: window.innerWidth / 2 - W / 2 }
   const narrow = window.innerWidth < 900
   return (
-    <div className="tour-scrim" role="dialog" aria-modal="true" aria-label={L('סיור', 'Tour')}>
+    <div className="tour-scrim" role="dialog" aria-modal="true" aria-labelledby="tour-title">
       {rect && !narrow ? <div className="tour-hole" style={{ top: rect.top - 4, left: rect.left - 4, width: rect.width + 8, height: rect.height + 8 }} /> : <div className="tour-hole" style={{ top: '50%', left: '50%', width: 0, height: 0 }} />}
-      <div className="tour-pop" style={narrow ? { left: 16, right: 16, bottom: 16, top: 'auto', width: 'auto' } : pos}>
+      <div ref={popRef} className="tour-pop" style={narrow ? { left: 16, right: 16, bottom: 16, top: 'auto', width: 'auto' } : pos}>
         <div className="tour-dots">{steps.map((_, j) => <i key={j} className={j === i ? 'on' : ''} />)}</div>
-        <h3>{step.title}</h3>
+        <h3 id="tour-title">{step.title}</h3>
         <p className="muted">{step.text}</p>
         <div className="row between" style={{ marginTop: 6 }}>
           <button className="btn btn-ghost btn-sm" onClick={finish}>{L('דילוג', 'Skip')}</button>
           <div className="row" style={{ gap: 6 }}>
             {i > 0 && <button className="btn btn-line btn-sm" onClick={() => setI(i - 1)}>{L('הקודם', 'Back')}</button>}
             {i < steps.length - 1 ? (
-              <button className="btn btn-accent btn-sm" onClick={() => setI(i + 1)}>{L('הבא', 'Next')}</button>
+              <button className="btn btn-accent btn-sm tour-next" onClick={() => setI(i + 1)}>{L('הבא', 'Next')}</button>
             ) : (
-              <button className="btn btn-accent btn-sm" onClick={finish}>{L('יאללה', 'Let’s go')}</button>
+              <button className="btn btn-accent btn-sm tour-next" onClick={finish}>{L('יאללה', 'Let’s go')}</button>
             )}
           </div>
         </div>

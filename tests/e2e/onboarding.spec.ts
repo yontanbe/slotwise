@@ -27,7 +27,10 @@ test('product tour runs once and can be skipped', async ({ page }) => {
   await expect(page.locator('.tour-pop')).toHaveCount(0)
 })
 
-test('getting started checklist reacts to real actions', async ({ page }) => {
+test('getting started checklist reacts to real actions', async ({ page, context }) => {
+  // copying uses the clipboard; without permission the app falls back to a prompt dialog
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  page.on('dialog', (d) => d.dismiss().catch(() => {}))
   await enterDemo(page)
   const card = page.locator('.setup-card')
   await expect(card).toBeVisible()

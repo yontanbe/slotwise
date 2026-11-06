@@ -194,10 +194,10 @@ export function BackendModal({ open, onClose }: { open: boolean; onClose: () => 
         <p className="small muted">
           {L('הריצו את supabase/schema.sql בפרויקט חדש והדביקו כאן את ה-URL וה-anon key. ההגדרה נשמרת בדפדפן הזה. כדי לחזור לדמו מחקו את השדות.', 'Run supabase/schema.sql in a new project and paste the URL and anon key. Saved in this browser. Clear both fields to go back to demo.')}
         </p>
-        <Field label="Project URL">
+        <Field label={L('כתובת הפרויקט (Project URL)', 'Project URL')}>
           <input className="input ltr" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" />
         </Field>
-        <Field label="anon public key">
+        <Field label={L('מפתח ציבורי (anon key)', 'anon public key')}>
           <input className="input ltr" value={key} onChange={(e) => setKey(e.target.value)} />
         </Field>
         <div className="row" style={{ gap: 8 }}>

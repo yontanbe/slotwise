@@ -89,7 +89,7 @@ export default function Developer() {
                   <td className="mono small ltr">{k.prefix}…</td>
                   <td><span className="chip">{k.scopes.includes('write') ? L('קריאה וכתיבה', 'Read & write') : L('קריאה', 'Read')}</span></td>
                   <td className="small muted">{k.lastUsedAt ? L('שימוש אחרון ', 'Last used ') + fmtDate(k.lastUsedAt, me.timezone, { day: 'numeric', month: 'short' }) : L('לא בשימוש', 'Never used')}</td>
-                  <td style={{ textAlign: 'end' }}><button className="icon-btn" onClick={async () => { if (window.confirm(L('לבטל את המפתח?', 'Revoke this key?'))) await store.deleteKind('api_key', k.id) }}><Icon name="trash" size={14} /></button></td>
+                  <td style={{ textAlign: 'end' }}><button className="icon-btn" onClick={async () => { if (window.confirm(L('לבטל את המפתח?', 'Revoke this key?'))) await store.deleteKind('api_key', k.id) }} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -107,7 +107,7 @@ export default function Developer() {
           <Field label={L('כתובת שרת MCP (Streamable HTTP)', 'MCP server URL (Streamable HTTP)')}>
             <div className="row" style={{ gap: 6 }}>
               <div className="code-block grow">{mcpUrl}</div>
-              <button className="icon-btn" onClick={() => copy(mcpUrl)}><Icon name="copy" size={14} /></button>
+              <button className="icon-btn" onClick={() => copy(mcpUrl)} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button>
             </div>
           </Field>
           <p className="tiny muted">{L('אימות: Authorization: Bearer <מפתח API>. כלים: list_event_types, get_availability, create_booking, reschedule_booking, cancel_booking (עם confirm), list_bookings, create_poll, get_insights ועוד.', 'Auth: Authorization: Bearer <API key>. Tools: list_event_types, get_availability, create_booking, reschedule_booking, cancel_booking (needs confirm), list_bookings, create_poll, get_insights and more.')}</p>
@@ -130,14 +130,14 @@ export default function Developer() {
                 <div className="tiny muted">{h.events.join(', ')}</div>
               </div>
               <div className="row" style={{ gap: 6 }}>
-                <Toggle checked={h.active} onChange={(v) => store.saveKind('webhook', { ...h, active: v })} />
+                <Toggle label={h.url} checked={h.active} onChange={(v) => store.saveKind('webhook', { ...h, active: v })} />
                 <button className="icon-btn" title={L('בדיקה', 'Test')} onClick={async () => {
                   const r = await deliverWebhook(h.url, h.secret, 'ping', { hello: 'slotwise' })
                   if (store.mode === 'local') await store.saveKind('webhook_delivery', { id: uid(), ownerId: me.id, webhookId: h.id, event: 'booking.created', status: r.status, code: r.code, attempts: 1, at: nowISO(), payload: { ping: true } })
                   toast(r.status === 'failed' ? L('השליחה נכשלה', 'Delivery failed') : L('נשלח', 'Sent'), r.status === 'failed')
-                }}><Icon name="arrow" size={14} /></button>
-                <button className="icon-btn" onClick={() => setHook(h)}><Icon name="edit" size={14} /></button>
-                <button className="icon-btn" onClick={() => store.deleteKind('webhook', h.id)}><Icon name="trash" size={14} /></button>
+                }} aria-label={L('שליחת בדיקה', 'Send a test')}><Icon name="arrow" size={14} /></button>
+                <button className="icon-btn" onClick={() => setHook(h)} aria-label={L('עריכה', 'Edit')}><Icon name="edit" size={14} /></button>
+                <button className="icon-btn" onClick={() => store.deleteKind('webhook', h.id)} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
               </div>
             </div>
           ))}
@@ -162,7 +162,7 @@ export default function Developer() {
           )}
           {me.workflowSecret && (
             <Field label={L('סוד חתימה לתהליכים (Webhook בתוך תהליך)', 'Workflow webhook signing secret')}>
-              <div className="row" style={{ gap: 6 }}><div className="code-block grow">{me.workflowSecret}</div><button className="icon-btn" onClick={() => copy(me.workflowSecret!)}><Icon name="copy" size={14} /></button></div>
+              <div className="row" style={{ gap: 6 }}><div className="code-block grow">{me.workflowSecret}</div><button className="icon-btn" onClick={() => copy(me.workflowSecret!)} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button></div>
             </Field>
           )}
           <p className="tiny muted">{L('מהדפדפן: אם השרת המקבל לא מאפשר CORS, נשלחת גרסה אטומה שבה החתימה בגוף ההודעה. עם Edge Functions השליחה מלאה עם ניסיונות חוזרים.', 'From the browser: if the receiver does not allow CORS, an opaque request carries the signature in the body. With Edge Functions delivery is full, with retries.')}</p>
@@ -187,7 +187,7 @@ export default function Developer() {
             <h3>Webhook</h3>
             <Field label="URL"><input className="input ltr" value={hook.url} onChange={(e) => setHook({ ...hook, url: e.target.value })} /></Field>
             <Field label={L('סוד חתימה', 'Signing secret')}>
-              <div className="row" style={{ gap: 6 }}><div className="code-block grow">{hook.secret}</div><button className="icon-btn" onClick={() => copy(hook.secret)}><Icon name="copy" size={14} /></button></div>
+              <div className="row" style={{ gap: 6 }}><div className="code-block grow">{hook.secret}</div><button className="icon-btn" onClick={() => copy(hook.secret)} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button></div>
             </Field>
             <Field label={L('אירועים', 'Events')}>
               <div className="stack" style={{ ['--gap' as string]: '4px' }}>

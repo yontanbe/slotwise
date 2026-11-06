@@ -57,7 +57,7 @@ test('editing an event type shows on the public page', async ({ page }) => {
 test('a day off override removes that day from the booking page', async ({ page }) => {
   await go(page, '/yonatan/intro')
   await expect(page.locator('.month-day.avail').first()).toBeVisible({ timeout: 15_000 })
-  const firstDay = await page.locator('.month-day.avail').first().getAttribute('aria-label')
+  const firstDay = await page.locator('.month-day.avail').first().getAttribute('data-date')
   await enterDemo(page)
   await go(page, '/app/availability')
   // navigate the override calendar to that month if needed, then mark the day off
@@ -70,7 +70,7 @@ test('a day off override removes that day from the booking page', async ({ page 
   }, firstDay)
   await go(page, '/yonatan/intro')
   await expect(page.locator('.month-day.avail').first()).toBeVisible({ timeout: 15_000 })
-  await expect(page.locator(`.month-day.avail[aria-label="${firstDay}"]`)).toHaveCount(0)
+  await expect(page.locator(`.month-day.avail[data-date="${firstDay}"]`)).toHaveCount(0)
 })
 
 test('workflow preset runs on a new booking (WhatsApp to host waits in outbox)', async ({ page }) => {

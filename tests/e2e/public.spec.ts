@@ -180,10 +180,10 @@ test('embed mode hides chrome and posts events', async ({ page }) => {
 test('english and dark mode', async ({ page }) => {
   const done = watchErrors(page)
   await go(page, '/yonatan/intro')
-  await page.getByRole('button', { name: 'language' }).click()
+  await page.getByRole('button', { name: /English|עברית/ }).first().click()
   await expect(page.locator('html')).toHaveAttribute('dir', 'ltr')
   await expect(page.getByText('Meeting with')).toBeVisible()
-  await page.getByRole('button', { name: 'theme' }).click()
+  await page.getByRole('button', { name: /mode|מצב/ }).first().click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', /dark|light/)
   done()
 })

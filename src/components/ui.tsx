@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { DateTime } from 'luxon'
 import { useI18n } from '../i18n'
 import type { BookingStatus } from '../lib/types'
@@ -75,14 +75,24 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} className="toggle" onClick={() => onChange(!checked)} />
 }
 
+const LABELABLE = new Set(['input', 'select', 'textarea'])
+/** Label + control. A single native control child gets an id so the label is programmatically tied to it. */
 export function Field({ label, hint, required, children, htmlFor }: { label: ReactNode; hint?: ReactNode; required?: boolean; children: ReactNode; htmlFor?: string }) {
+  const auto = useId()
+  let target = htmlFor
+  let content = children
+  if (!htmlFor && isValidElement(children) && typeof children.type === 'string' && LABELABLE.has(children.type)) {
+    const props = children.props as { id?: string }
+    target = props.id ?? auto
+    content = cloneElement(children as ReactElement<{ id?: string }>, { id: target })
+  }
   return (
-    <div className="field">
-      <label className="label" htmlFor={htmlFor}>
+    <div className="field" role={target ? undefined : 'group'} aria-label={target || typeof label !== 'string' ? undefined : label}>
+      <label className="label" htmlFor={target}>
         {label}
         {required && <span className="req">*</span>}
       </label>
-      {children}
+      {content}
       {hint && <span className="hint">{hint}</span>}
     </div>
   )
@@ -103,17 +113,64 @@ export function Avatar({ name, src, size = 44 }: { name: string; src?: string; s
   )
 }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+
+/** Keeps keyboard focus inside a container, focuses the first control and restores focus on close. */
+export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean, initial?: string) {
+  useEffect(() => {
+    if (!active || !ref.current) return
+    const root = ref.current
+    const opener = document.activeElement as HTMLElement | null
+    const first = (initial && (root.querySelector(initial) as HTMLElement | null)) || (root.querySelector(FOCUSABLE) as HTMLElement | null)
+    ;(first ?? root).focus({ preventScroll: true })
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const items = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((x) => x.offsetParent !== null)
+      if (!items.length) return
+      const a = items[0]
+      const z = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === a) {
+        e.preventDefault()
+        z.focus()
+      } else if (!e.shiftKey && document.activeElement === z) {
+        e.preventDefault()
+        a.focus()
+      } else if (!root.contains(document.activeElement)) {
+        e.preventDefault()
+        a.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (opener && document.contains(opener)) opener.focus({ preventScroll: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+}
+
 export function Modal({ open, onClose, children, wide }: { open: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [labelId, setLabelId] = useState<string | undefined>()
   useEffect(() => {
     if (!open) return
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [open, onClose])
+  useFocusTrap(ref, open)
+  useEffect(() => {
+    // name the dialog after its first heading
+    const h = ref.current?.querySelector('h1,h2,h3')
+    if (h) {
+      if (!h.id) h.id = 'dlg-' + Math.random().toString(36).slice(2, 8)
+      setLabelId(h.id)
+    }
+  }, [open, children])
   if (!open) return null
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true">
+      <div ref={ref} tabIndex={-1} className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={labelId}>
         {children}
       </div>
     </div>
@@ -239,7 +296,7 @@ export function MonthCalendar({
           </button>
         </div>
       </div>
-      <div className="month-grid" role="grid">
+      <div className="month-grid">
         {Array.from({ length: 7 }, (_, i) => (
           <div key={i} className="month-dow">
             {weekdayShort((i + weekStart) % 7)}
@@ -253,7 +310,15 @@ export function MonthCalendar({
             .join(' ')
           const clickable = avail || pickAny
           return (
-            <button key={d} className={cls} disabled={!clickable} onClick={() => clickable && onSelect(d)} aria-pressed={selected === d} aria-label={d}>
+            <button
+              key={d}
+              data-date={d}
+              className={cls}
+              disabled={!clickable}
+              onClick={() => clickable && onSelect(d)}
+              aria-pressed={selected === d}
+              aria-label={DateTime.fromISO(d).setLocale(intl).toLocaleString({ weekday: 'long', day: 'numeric', month: 'long' }) + (avail ? '' : clickable ? '' : ` · ${L('לא זמין', 'unavailable')}`)}
+            >
               {Number(d.slice(8))}
             </button>
           )
@@ -298,10 +363,11 @@ export function tzLabel(tz: string) {
   const off = DateTime.now().setZone(tz).toFormat('ZZ')
   return `${tz.replace(/_/g, ' ')} (GMT${off})`
 }
-export function TimezoneSelect({ value, onChange, className = 'select' }: { value: string; onChange: (tz: string) => void; className?: string }) {
+export function TimezoneSelect({ value, onChange, className = 'select', label }: { value: string; onChange: (tz: string) => void; className?: string; label?: string }) {
   const list = useMemo(allTimezones, [])
+  const { L } = useI18n()
   return (
-    <select className={className} dir="ltr" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className={className} dir="ltr" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label ?? L('אזור זמן', 'Timezone')}>
       {!list.includes(value) && <option value={value}>{tzLabel(value)}</option>}
       {list.map((tz) => (
         <option key={tz} value={tz}>

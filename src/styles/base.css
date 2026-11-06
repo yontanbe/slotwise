@@ -261,7 +261,7 @@ p {
   box-shadow: none;
 }
 .btn-accent {
-  --bg: var(--accent);
+  --bg: var(--accent-strong);
   --fg: var(--on-accent);
 }
 .btn-line {
@@ -530,7 +530,20 @@ p {
 .chip.accent {
   border-color: transparent;
   background: var(--accent-wash);
+  color: #a8391a;
+}
+:root[data-theme='dark'] .chip.accent {
   color: var(--accent-2);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .chip.accent {
+    color: var(--accent-2);
+  }
+}
+/* comfortable tap targets for inline text links */
+.link {
+  padding-block: 5px;
+  display: inline-block;
 }
 .chip.sage {
   border-color: transparent;
@@ -565,13 +578,12 @@ p {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   transform: rotate(-3deg);
-  opacity: 0.9;
 }
 .stamp.ok {
   color: var(--ok);
 }
 .stamp.wait {
-  color: var(--mustard);
+  color: var(--wait);
 }
 .stamp.bad {
   color: var(--danger);
@@ -983,7 +995,7 @@ button.tt-row {
   width: var(--s, 44px);
   height: var(--s, 44px);
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   display: grid;
   place-items: center;

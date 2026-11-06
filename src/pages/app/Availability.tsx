@@ -87,9 +87,9 @@ export default function Availability() {
         sub={L('כמה לוחות זמנים, כל סוג פגישה בוחר אחד.', 'Multiple schedules. Each event type picks one.')}
         actions={<button className="btn btn-line" onClick={create}><Icon name="plus" size={15} /> {L('לוח חדש', 'New schedule')}</button>}
       />
-      <div className="tabs">
+      <div className="tabs" role="tablist">
         {schedules.map((s) => (
-          <button key={s.id} aria-selected={s.id === draft.id} onClick={() => nav(`/app/availability/${s.id}`)}>
+          <button key={s.id} role="tab" aria-selected={s.id === draft.id} onClick={() => nav(`/app/availability/${s.id}`)}>
             {s.name}
             {s.id === me.defaultScheduleId && <span className="count">★</span>}
           </button>
@@ -159,7 +159,7 @@ export default function Availability() {
                 <li key={o.date}>
                   <span className="mono small">{DateTime.fromISO(o.date).toFormat('dd.MM.yy')}</span>
                   <span className="small">{o.ranges.length ? o.ranges.map((r) => `${r.start}–${r.end}`).join(', ') : L('חופש', 'Off')}</span>
-                  <button className="icon-btn" onClick={() => setDraft({ ...draft, overrides: draft.overrides.filter((x) => x.date !== o.date) })}><Icon name="x" size={13} /></button>
+                  <button className="icon-btn" onClick={() => setDraft({ ...draft, overrides: draft.overrides.filter((x) => x.date !== o.date) })} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={13} /></button>
                 </li>
               ))}
             </ul>

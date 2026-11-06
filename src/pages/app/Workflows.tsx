@@ -81,7 +81,7 @@ export default function Workflows() {
         </div>
         {store.mode === 'supabase' && (
           <label className="row" style={{ gap: 8 }}>
-            <Toggle checked={!!me.automationOnServer} onChange={async (v) => { await store.saveUser({ ...me, automationOnServer: v }); refresh() }} />
+            <Toggle label={L('הרצה בשרת', 'Run on server')} checked={!!me.automationOnServer} onChange={async (v) => { await store.saveUser({ ...me, automationOnServer: v }); refresh() }} />
             <span className="tiny">{L('הרצה בשרת', 'Run on server')}</span>
           </label>
         )}
@@ -102,8 +102,8 @@ export default function Workflows() {
                 <div className="tiny muted">{w.steps.map((s) => actionName[s.action]).join(' → ')} · {w.eventTypeIds.length ? w.eventTypeIds.length + L(' סוגי פגישות', ' event types') : L('כל סוגי הפגישות', 'All event types')}</div>
               </button>
               <div className="row" style={{ gap: 8 }}>
-                <Toggle checked={w.active} onChange={(v) => store.saveKind('workflow', { ...w, active: v })} />
-                <button className="icon-btn" onClick={async () => { if (window.confirm(L('למחוק?', 'Delete?'))) await store.deleteKind('workflow', w.id) }}><Icon name="trash" size={14} /></button>
+                <Toggle label={w.name} checked={w.active} onChange={(v) => store.saveKind('workflow', { ...w, active: v })} />
+                <button className="icon-btn" onClick={async () => { if (window.confirm(L('למחוק?', 'Delete?'))) await store.deleteKind('workflow', w.id) }} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
               </div>
             </div>
           ))}
@@ -191,7 +191,7 @@ function WorkflowEditor({
       <div className="stack" style={{ ['--gap' as string]: '16px' }}>
         <div className="row between">
           <h3>{L('עריכת תהליך', 'Edit workflow')}</h3>
-          <button className="icon-btn" onClick={onClose}><Icon name="x" /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={L('הסרה', 'Remove')}><Icon name="x" /></button>
         </div>
         <Field label={L('שם', 'Name')}>
           <input className="input" value={w.name} onChange={(e) => setW({ ...w, name: e.target.value })} />
@@ -239,7 +239,7 @@ function WorkflowEditor({
                 {(s.action === 'email_custom' || s.action === 'webhook') && (
                   <input className="input input-sm ltr grow" placeholder={s.action === 'webhook' ? 'https://' : 'team@company.com'} value={s.to || ''} onChange={(e) => setStep(i, { to: e.target.value })} />
                 )}
-                <button className="icon-btn" style={{ marginInlineStart: 'auto' }} onClick={() => setW({ ...w, steps: w.steps.filter((_, j) => j !== i) })}><Icon name="trash" size={14} /></button>
+                <button className="icon-btn" style={{ marginInlineStart: 'auto' }} onClick={() => setW({ ...w, steps: w.steps.filter((_, j) => j !== i) })} aria-label={L('מחיקה', 'Delete')}><Icon name="trash" size={14} /></button>
               </div>
               {s.action.startsWith('email') && (
                 <input className="input input-sm" placeholder={L('נושא', 'Subject')} value={s.subject} onFocus={() => setFocus({ i, field: 'subject' })} onChange={(e) => setStep(i, { subject: e.target.value })} />

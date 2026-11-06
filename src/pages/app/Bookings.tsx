@@ -79,9 +79,9 @@ export default function Bookings() {
       <div className="row wrap" style={{ gap: 10 }}>
         <div className="input-group grow" style={{ minWidth: 240 }}>
           <span className="addon"><Icon name="search" size={16} /></span>
-          <input className="input" placeholder={L('חיפוש לפי שם, מייל, טלפון, תשובה…', 'Search name, email, phone, any answer…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input aria-label={L('חיפוש פגישות', 'Search bookings')} className="input" placeholder={L('חיפוש לפי שם, מייל, טלפון, תשובה…', 'Search name, email, phone, any answer…')} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <select className="select" style={{ width: 'auto', minWidth: 180 }} value={etFilter} onChange={(e) => setEtFilter(e.target.value)}>
+        <select aria-label={L('סינון לפי סוג פגישה', 'Filter by event type')} className="select" style={{ width: 'auto', minWidth: 180 }} value={etFilter} onChange={(e) => setEtFilter(e.target.value)}>
           <option value="">{L('כל סוגי הפגישות', 'All event types')}</option>
           {ets.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
         </select>
@@ -139,8 +139,8 @@ function WeekCalendar({ start, onStart, bookings, ets, onOpen, tz, intl, dir, L,
         <div className="row" style={{ gap: 6 }}>
           {isGoogleConnected() && <span className="chip"><span className="dot" style={{ color: 'var(--sage)' }} /> Google</span>}
           <button className="btn btn-ghost btn-sm" onClick={() => onStart(DateTime.now().setZone(tz).startOf('day').minus({ days: DateTime.now().setZone(tz).weekday % 7 }))}>{L('היום', 'Today')}</button>
-          <button className="icon-btn" onClick={() => onStart(start.minus({ days: 7 }))}><Icon name={dir === 'rtl' ? 'chevR' : 'chevL'} /></button>
-          <button className="icon-btn" onClick={() => onStart(start.plus({ days: 7 }))}><Icon name={dir === 'rtl' ? 'chevL' : 'chevR'} /></button>
+          <button className="icon-btn" onClick={() => onStart(start.minus({ days: 7 }))} aria-label={L('פתיחה', 'Open')}><Icon name={dir === 'rtl' ? 'chevR' : 'chevL'} /></button>
+          <button className="icon-btn" onClick={() => onStart(start.plus({ days: 7 }))} aria-label={L('פתיחה', 'Open')}><Icon name={dir === 'rtl' ? 'chevL' : 'chevR'} /></button>
         </div>
       </div>
       <div className="wcal-scroll">

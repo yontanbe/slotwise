@@ -4,17 +4,22 @@
   --card: #fbf7ee;
   --ink: #14213d;
   --ink-2: #33405e;
-  --ink-3: #6b6f80;
+  --ink-3: #5c6070;
   --rule: rgba(20, 33, 61, 0.16);
   --rule-2: rgba(20, 33, 61, 0.32);
   --accent: #e4572e;
   --accent-2: #c9441d;
+  /* text-bearing accent fills: 4.8:1 with the light on-accent color */
+  --accent-strong: #c4401b;
+  /* accent used as small text on paper */
+  --accent-text: #ad3816;
+  --wait: #85600f;
   --accent-wash: rgba(228, 87, 46, 0.1);
   --on-accent: #fff8ef;
   --sage: #7fa087;
   --sage-wash: rgba(127, 160, 135, 0.18);
   --mustard: #d9a441;
-  --ok: #3e7f5a;
+  --ok: #2f6b4a;
   --danger: #b83a1e;
   --rail: #14213d;
   --on-rail: #f6efe1;
@@ -47,6 +52,11 @@
     --accent-2: #ff8460;
     --accent-wash: rgba(240, 106, 67, 0.14);
     --on-accent: #1a0d07;
+    --accent-strong: #f06a43;
+    --accent-text: #f58a6a;
+    --wait: #d9a441;
+    --ok: #5fb184;
+    --danger: #ff8a6e;
     --sage-wash: rgba(127, 160, 135, 0.16);
     --rail: #0a101e;
     --on-rail: #f1e9d8;
@@ -71,6 +81,11 @@
   --accent-2: #ff8460;
   --accent-wash: rgba(240, 106, 67, 0.14);
   --on-accent: #1a0d07;
+  --accent-strong: #f06a43;
+  --accent-text: #f58a6a;
+  --wait: #d9a441;
+  --ok: #5fb184;
+  --danger: #ff8a6e;
   --sage-wash: rgba(127, 160, 135, 0.16);
   --rail: #0a101e;
   --on-rail: #f1e9d8;

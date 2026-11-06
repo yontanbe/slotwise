@@ -44,7 +44,7 @@ export default function Polls() {
                 </Link>
                 <div className="row" style={{ gap: 6 }}>
                   <span className={`stamp ${p.status === 'open' ? 'ok' : 'mute'}`}>{p.status === 'open' ? L('פתוח', 'Open') : L('סגור', 'Closed')}</span>
-                  <button className="icon-btn" onClick={() => copy(appUrl(`/p/${p.id}`))}><Icon name="copy" size={15} /></button>
+                  <button className="icon-btn" onClick={() => copy(appUrl(`/p/${p.id}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={15} /></button>
                 </div>
               </div>
             )

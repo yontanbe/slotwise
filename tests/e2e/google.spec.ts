@@ -61,7 +61,7 @@ async function hostWithGoogle(page: Page, google: Record<string, unknown> = {}, 
 /** The first offered slot on the open booking page, as a Luxon DateTime in Asia/Jerusalem. */
 async function offered(page: Page) {
   await expect(page.locator('.ticket-list .ticket').first()).toBeVisible({ timeout: 15_000 })
-  const date = (await page.locator('.month-day.selected').getAttribute('aria-label'))!
+  const date = (await page.locator('.month-day.selected').getAttribute('data-date'))!
   const times = (await page.locator('.ticket-list .ticket > span.ltr').allInnerTexts()).map((t) => t.trim())
   return { date, times, at: (hhmm: string) => DateTime.fromISO(`${date}T${hhmm}`, { zone: TZ }) }
 }
@@ -252,7 +252,7 @@ test('2. busy pull hides Google busy slots and never blocks the host on its own 
   // invitee view: the busy slot is gone, the others stay
   await go(page, '/yonatan/intro')
   await expect(page.locator('.ticket-list .ticket').first()).toBeVisible({ timeout: 15_000 })
-  await page.locator(`.month-day[aria-label="${before.date}"]`).click()
+  await page.locator(`.month-day[data-date="${before.date}"]`).click()
   const after = (await page.locator('.ticket-list .ticket > span.ltr').allInnerTexts()).map((t) => t.trim())
   expect(after).not.toContain(before.times[0])
   expect(after).toContain(before.times[1])
@@ -261,7 +261,7 @@ test('2. busy pull hides Google busy slots and never blocks the host on its own 
   // seats: the workshop slot is still bookable, with one seat taken
   await go(page, '/yonatan/workshop')
   await expect(page.locator('.ticket-list .ticket').first()).toBeVisible({ timeout: 15_000 })
-  await page.locator(`.month-day[aria-label="${ws.date}"]`).click()
+  await page.locator(`.month-day[data-date="${ws.date}"]`).click()
   const wsTicket = page.locator('.ticket-list .ticket', { hasText: ws.times[0] })
   await expect(wsTicket).toBeVisible()
   await expect(wsTicket).toContainText('7')

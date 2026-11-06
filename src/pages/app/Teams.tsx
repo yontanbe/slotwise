@@ -91,7 +91,7 @@ export default function Teams() {
               </div>
               <div className="row" style={{ gap: 6 }}>
                 <button className="btn btn-line btn-sm" onClick={() => copy(appUrl(`/team/${t.slug}`))}><Icon name="copy" size={14} /> {L('קישור', 'Link')}</button>
-                <a className="btn btn-line btn-sm" href={appUrl(`/team/${t.slug}`)} target="_blank" rel="noreferrer"><Icon name="eye" size={14} /></a>
+                <a className="btn btn-line btn-sm" aria-label={L('תצוגה בלשונית חדשה', 'Preview in a new tab')} href={appUrl(`/team/${t.slug}`)} target="_blank" rel="noreferrer"><Icon name="eye" size={14} /></a>
               </div>
             </div>
             <div className="row wrap" style={{ gap: 14 }}>
@@ -103,7 +103,7 @@ export default function Teams() {
                     <div className="tiny muted">{t.members.find((x) => x.userId === m.user.id)?.role === 'owner' ? L('בעלים', 'Owner') : L('חבר/ה', 'Member')}</div>
                   </div>
                   {isAdmin && m.user.id !== t.ownerId && (
-                    <button className="icon-btn" title={L('הסרה', 'Remove')} onClick={() => store.saveKind('team', { ...t, members: t.members.filter((x) => x.userId !== m.user.id) })}><Icon name="x" size={12} /></button>
+                    <button className="icon-btn" title={L('הסרה', 'Remove')} onClick={() => store.saveKind('team', { ...t, members: t.members.filter((x) => x.userId !== m.user.id) })} aria-label={L('הסרה', 'Remove')}><Icon name="x" size={12} /></button>
                   )}
                 </div>
               ))}
@@ -132,7 +132,7 @@ export default function Teams() {
                     {e.ownerId === me.id ? <Link to={`/app/event-types/${e.id}`} className="link">{e.title}</Link> : <span>{e.title}</span>}
                     <div className="tiny muted">{e.schedulingType === 'collective' ? L('כולם יחד', 'Collective') : L('סבב', 'Round robin')} · {(e.hosts || []).length} {L('מארחים', 'hosts')}</div>
                   </div>
-                  <button className="icon-btn" onClick={() => copy(appUrl(`/team/${t.slug}/${e.slug}`))}><Icon name="copy" size={14} /></button>
+                  <button className="icon-btn" onClick={() => copy(appUrl(`/team/${t.slug}/${e.slug}`))} aria-label={L('העתקה', 'Copy')}><Icon name="copy" size={14} /></button>
                 </div>
               ))}
             </div>
@@ -149,7 +149,7 @@ export default function Teams() {
           <h3>{L('צוות חדש', 'New team')}</h3>
           <Field label={L('שם', 'Name')}><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label={L('כתובת', 'Slug')}>
-            <div className="input-group ltr"><span className="addon">/team/</span><input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={slugify(name)} /></div>
+            <div className="input-group ltr"><span className="addon">/team/</span><input aria-label={L('כתובת', 'Address slug')} className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={slugify(name)} /></div>
           </Field>
           <button className="btn btn-accent" onClick={create}>{L('יצירה', 'Create')}</button>
         </div>
