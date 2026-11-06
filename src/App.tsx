@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, RequireAuth } from './auth/AuthProvider'
 import { ToastProvider } from './components/ui'
@@ -31,6 +31,12 @@ import PollVote from './pages/public/PollVote'
 import Profile from './pages/public/Profile'
 import RoutingPage from './pages/public/RoutingPage'
 import { TeamBooking, TeamProfile } from './pages/public/TeamPage'
+
+/** Remounts a page on every navigation so per-visit state (modes, results) never leaks between URLs. */
+function Fresh({ children }: { children: React.ReactElement }) {
+  const loc = useLocation()
+  return <Fragment key={loc.key}>{children}</Fragment>
+}
 
 function ScrollTop() {
   const { pathname } = useLocation()
@@ -88,14 +94,14 @@ export default function App() {
                   <Route path="developers" element={<Developer />} />
                   <Route path="*" element={<Navigate to="/app" replace />} />
                 </Route>
-                <Route path="/b/:token" element={<ManageBooking />} />
+                <Route path="/b/:token" element={<Fresh><ManageBooking /></Fresh>} />
                 <Route path="/p/:id" element={<PollVote />} />
                 <Route path="/d/:token" element={<LinkPage />} />
                 <Route path="/team/:slug" element={<TeamProfile />} />
                 <Route path="/team/:slug/:et" element={<TeamBooking />} />
-                <Route path="/:username/forms/:slug" element={<RoutingPage />} />
+                <Route path="/:username/forms/:slug" element={<Fresh><RoutingPage /></Fresh>} />
                 <Route path="/:username" element={<Profile />} />
-                <Route path="/:username/:slug" element={<BookingPage />} />
+                <Route path="/:username/:slug" element={<Fresh><BookingPage /></Fresh>} />
               </Routes>
             </AuthProvider>
           </HashRouter>

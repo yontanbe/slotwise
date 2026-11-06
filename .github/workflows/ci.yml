@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b
+      - name: Unit tests (Israel, UTC, Los Angeles)
+        run: |
+          TZ=Asia/Jerusalem npm test
+          TZ=UTC npm test
+          TZ=America/Los_Angeles npm test
+      - run: npm run test:sql
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Edge Functions
+        working-directory: supabase/functions
+        run: |
+          for f in api mcp cron webhooks whatsapp stripe; do deno check $f/index.ts; done
+          deno test --allow-env tests/
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: '1'

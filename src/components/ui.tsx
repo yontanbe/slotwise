@@ -301,7 +301,7 @@ export function tzLabel(tz: string) {
 export function TimezoneSelect({ value, onChange, className = 'select' }: { value: string; onChange: (tz: string) => void; className?: string }) {
   const list = useMemo(allTimezones, [])
   return (
-    <select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className={className} dir="ltr" value={value} onChange={(e) => onChange(e.target.value)}>
       {!list.includes(value) && <option value={value}>{tzLabel(value)}</option>}
       {list.map((tz) => (
         <option key={tz} value={tz}>

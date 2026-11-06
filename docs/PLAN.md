@@ -1,4 +1,4 @@
-# Slotwise build plan (static first)
+# Slotwise build plan
 
 This is the working plan for the first runnable version. The product spec stays in the root README.
 
@@ -36,13 +36,24 @@ Routes under `/app` and `/onboarding` sit behind `RequireAuth`. Flip to producti
 | WhatsApp | Click to chat links with prefilled text (wa.me) | Meta Cloud API templates with buttons |
 | Race on the same slot | Local: check then write. Supabase: advisory lock + overlap check inside RPC | same |
 
-## Scope v0.1
+## Scope status (v0.2)
 
-P0: profile page, onboarding wizard, event types (durations, locations, buffers, notice, window, interval, hidden), multiple schedules with weekly ranges and date overrides on a month view, availability engine, booking page (month + list, week view, timezone detect and picker), booking form, confirmation with ICS and add to Google / Outlook, cancel and reschedule without login, bookings list with search across every field, manual booking with override, RTL Hebrew + English, dark / light.
+Built and covered by tests:
 
-P1 that fits static: custom questions (all types, required, simple conditions), URL prefill + UTM capture, redirect after booking, requires confirmation, limits per day / week and duration per day, first slot only, seats, single use links, meeting polls, ranked (preferred) hours, Shabbat and holidays auto block by city with Hebrew date, no show and internal notes, booking history, week calendar view, contacts, insights, data export / import, week start, 12h / 24h, PWA manifest.
+- P0: profile, onboarding, event types, multiple schedules with date overrides, availability engine, booking page (month, week, timezones), booking form, confirmation with ICS and calendar links, cancel and reschedule by link, bookings list with search across every field, manual booking with override, Hebrew RTL and English, dark mode.
+- P1: custom questions with conditions, URL prefill and UTM, redirect after booking, requires confirmation with auto decline, limits per day, week, month and minutes, first slot only, seats, recurring series, single use links, personalized links, meeting polls with private voters, preferred hours, Shabbat and holidays by city, out of office with redirect, travel timezones, reconfirmation, per invitee limits, workflows (email, WhatsApp, webhook steps), routing forms with rules, teams with round robin (priority and weight) and collective, dynamic group links (alice+bob), webhooks with HMAC, API keys, REST API and MCP server (Edge Functions), Stripe payments (Payment Link or Checkout), invitee calendar overlay, embeds (inline, popup, floating), 2FA (Supabase MFA), PWA.
+- Server (Supabase Edge Functions): api, mcp, cron (workflows, auto decline, webhook retries, Shabbat blocks), webhooks, whatsapp (Cloud API, button replies, STOP), stripe. See docs/SERVER.md.
 
-Deferred until there is a server: teams, round robin, collective, routing forms, workflows, webhooks, payments, REST API, MCP server, WhatsApp Cloud API, 2FA.
+Not built yet: Outlook and CalDAV, Zoom OAuth, organizations and SSO, CRM routing and enrichment, form concierge, focus time and smart meetings, service business mode (resources, packages), Israeli payment processors, AI features, native apps, Gmail add on, Reserve with Google, MCP OAuth 2.1.
+
+## Tests
+
+| Suite | Command | What it covers |
+| --- | --- | --- |
+| Unit | `npm test` | availability engine (DST, offsets, limits, seats, travel), Shabbat and holiday classification, workflow engine, routing rules, sync helpers |
+| SQL | `npm run test:sql` | schema and every public RPC against Postgres (PGlite): rules, allow-listed fields, series, teams, polls, privileges |
+| Edge Functions | `cd supabase/functions && deno test --allow-env tests/` | API routing and auth, MCP protocol, webhook and Stripe signatures, service layer |
+| End to end | `npm run test:e2e` | 30 browser flows, desktop and mobile |
 
 ## Design direction
 

@@ -2,7 +2,7 @@
 
 The complete scheduling platform. Everything Calendly and Cal.com do, plus the best ideas from SavvyCal, Chili Piper, Reclaim, Motion, Doodle and Acuity, with Google Calendar, Gmail, WhatsApp and MCP built in from day one. Hebrew (RTL) and English from the start.
 
-Status: v0.1 runs as a static app on GitHub Pages (demo mode with localStorage, or Supabase). This README is the product spec; the build plan is in [docs/PLAN.md](docs/PLAN.md).
+Status: v0.2. Runs as a static app on GitHub Pages (demo mode with localStorage) or with Supabase plus Edge Functions for the server parts. This README is the product spec; what is built and how it is tested is in [docs/PLAN.md](docs/PLAN.md), server setup in [docs/SERVER.md](docs/SERVER.md).
 
 ## Run it
 
@@ -11,6 +11,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # availability engine + Shabbat / holiday tests
 npm run test:sql   # Supabase schema and RPCs against an in-process Postgres
+npm run test:e2e   # browser flows (Playwright)
 npm run build      # static output in dist/
 ```
 
