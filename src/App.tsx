@@ -22,6 +22,7 @@ import RoutingForms from './pages/app/RoutingForms'
 import Teams from './pages/app/Teams'
 import Developer from './pages/app/Developer'
 import Landing from './pages/Landing'
+import Guide from './pages/Guide'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 import BookingPage from './pages/public/BookingPage'
@@ -60,6 +61,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/guide" element={<Guide />} />
                 <Route
                   path="/onboarding"
                   element={

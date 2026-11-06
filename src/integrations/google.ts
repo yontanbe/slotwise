@@ -100,7 +100,10 @@ export async function connectGoogle(withGmail: boolean): Promise<TokenState> {
 export function disconnectGoogle() {
   const t = getToken()
   sessionStorage.removeItem(TK)
-  if (t && window.google) window.google.accounts.oauth2.revoke(t.access_token)
+  if (!t) return
+  // revoke at Google too; after a reload GIS is not loaded yet, so load it first
+  if (window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(t.access_token)
+  else if (isGoogleConfigured()) loadGis().then(() => window.google?.accounts.oauth2.revoke(t.access_token)).catch(() => {})
 }
 
 async function gfetch<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -209,13 +212,29 @@ export async function deleteEvent(calendarId: string, eventId: string) {
   }
 }
 
-function b64url(s: string) {
+function b64(s: string) {
   const bytes = new TextEncoder().encode(s)
   let bin = ''
   bytes.forEach((b) => (bin += String.fromCharCode(b)))
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return btoa(bin)
 }
-const encWord = (s: string) => `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(s)))}?=`
+const b64url = (s: string) => b64(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+/** MIME body part as base64 in 76 char lines (the text is UTF-8, so 7bit would be wrong). */
+const b64Body = (s: string) => (b64(s).match(/.{1,76}/g) || ['']).join('\r\n')
+/** RFC 2047: encoded words of at most 75 chars, split on code points, folded with CRLF + space. */
+function encWord(s: string) {
+  const words: string[] = []
+  let chunk = ''
+  for (const ch of s) {
+    if (chunk && new TextEncoder().encode(chunk + ch).length > 45) {
+      words.push(chunk)
+      chunk = ''
+    }
+    chunk += ch
+  }
+  if (chunk) words.push(chunk)
+  return words.map((w) => `=?UTF-8?B?${b64(w)}?=`).join('\r\n ')
+}
 
 export async function sendGmail(p: { to: string; subject: string; text: string; fromName?: string; ics?: string }) {
   const to = p.to.trim()
@@ -231,17 +250,19 @@ export async function sendGmail(p: { to: string; subject: string; text: string; 
       '',
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: base64',
       '',
-      p.text,
+      b64Body(p.text),
       `--${boundary}`,
       'Content-Type: text/calendar; charset="UTF-8"; method=PUBLISH; name="invite.ics"',
       'Content-Disposition: attachment; filename="invite.ics"',
+      'Content-Transfer-Encoding: base64',
       '',
-      p.ics,
+      b64Body(p.ics),
       `--${boundary}--`,
     ].join('\r\n')
   } else {
-    raw = [...headers, 'Content-Type: text/plain; charset="UTF-8"', '', p.text].join('\r\n')
+    raw = [...headers, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', b64Body(p.text)].join('\r\n')
   }
   return gfetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', body: JSON.stringify({ raw: b64url(raw) }) })
 }
@@ -271,6 +292,7 @@ export async function getInviteeBusy(timeMin: string, timeMax: string): Promise<
     headers: { Authorization: `Bearer ${inviteeToken!.access_token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ timeMin, timeMax, items: [{ id: 'primary' }] }),
   })
+  if (res.status === 401) inviteeToken = null // revoked or expired early: ask again next time
   if (!res.ok) throw new Error(`google_${res.status}`)
   const j = (await res.json()) as { calendars: Record<string, { busy: { start: string; end: string }[] }> }
   return Object.values(j.calendars).flatMap((c) => c.busy || []).map((b) => ({ start: new Date(b.start).toISOString(), end: new Date(b.end).toISOString() }))

@@ -22,6 +22,8 @@ jobs:
           TZ=UTC npm test
           TZ=America/Los_Angeles npm test
       - run: npm run test:sql
+      - name: supabase/migrations/001_schema.sql is a copy of schema.sql
+        run: cmp supabase/schema.sql supabase/migrations/001_schema.sql
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x

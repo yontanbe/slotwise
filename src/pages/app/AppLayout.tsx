@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth, useMe } from '../../auth/AuthProvider'
 import { Avatar, Icon, Logo, useCopy } from '../../components/ui'
+import { markShared, ProductTour } from '../../components/Onboarding'
 import { useLoad, useStore } from '../../data/StoreProvider'
 import { useI18n } from '../../i18n'
 import { isGoogleConnected } from '../../integrations/google'
@@ -72,7 +73,7 @@ export default function AppLayout() {
         </div>
         <nav className="rail-nav">
           {items.map(([to, ic, label, badge]) => (
-            <NavLink key={to} to={to} end={to === '/app'} className="rail-link">
+            <NavLink key={to} to={to} end={to === '/app'} className="rail-link" data-tour={to}>
               <Icon name={ic} size={19} />
               <span>{label}</span>
               {badge ? <span className="rail-badge">{badge}</span> : null}
@@ -80,7 +81,7 @@ export default function AppLayout() {
           ))}
         </nav>
         <div className="rail-bottom">
-          <button className="rail-link" onClick={() => copy(appUrl(`/${me.username}`))}>
+          <button className="rail-link" data-tour="share" onClick={() => { copy(appUrl(`/${me.username}`)); markShared(me.id) }}>
             <Icon name="link" size={19} />
             <span className="ltr" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>/{me.username}</span>
           </button>
@@ -105,6 +106,7 @@ export default function AppLayout() {
         </div>
       </aside>
       {menu && <div className="rail-scrim" onClick={() => setMenu(false)} />}
+      {!/[?&]notour=1/.test(window.location.hash) && <ProductTour />}
       <div className="main">
         <div className="mobile-bar">
           <button className="icon-btn" onClick={() => setMenu(true)} aria-label="menu">

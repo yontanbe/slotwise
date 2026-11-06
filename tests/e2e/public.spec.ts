@@ -4,7 +4,7 @@ import { db, fillInvitee, go, pickFirstSlot, submitBooking, watchErrors } from '
 test('landing and sample profile render', async ({ page }) => {
   const done = watchErrors(page)
   await go(page, '/')
-  await expect(page.locator('.hero-title')).toContainText('קישור אחד')
+  await expect(page.locator('.hero2-title')).toBeVisible()
   await go(page, '/yonatan')
   await expect(page.locator('h1')).toContainText('יונתן')
   // team event types and hidden ones are not on the personal profile

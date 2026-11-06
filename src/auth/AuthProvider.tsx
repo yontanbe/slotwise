@@ -4,6 +4,7 @@ import { DEMO_USER_ID, newSchedule, newUser } from '../data/defaults'
 import { localFindUserByEmail, seedDemo } from '../data/local'
 import { useStore, useSupabase } from '../data/StoreProvider'
 import { disconnectGoogle } from '../integrations/google'
+import { googleSignInAvailable, signInWithGoogleIdentity } from '../integrations/googleIdentity'
 import { appUrl } from '../lib/links'
 import type { User } from '../lib/types'
 
@@ -199,7 +200,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error?.message ?? null
       },
       signInWithOAuth: async (provider) => {
-        if (!sb) return localLogin(provider === 'google' ? 'google.user@example.com' : 'microsoft.user@example.com')
+        if (!sb) {
+          if (provider !== 'google') return 'microsoft_needs_backend'
+          if (!googleSignInAvailable()) return 'google_not_configured'
+          try {
+            const g = await signInWithGoogleIdentity()
+            const existing = localFindUserByEmail(g.email)
+            const id = existing?.id ?? 'g-' + g.sub
+            const u = await ensureProfile(id, g.email, g.name)
+            // first Google sign in: take the photo and mark the calendar as connected
+            if (!existing) await store.saveUser({ ...u, avatarUrl: u.avatarUrl || g.picture || '', google: { conflictCalendars: ['primary'], destinationCalendar: 'primary', sendWithGmail: false, ...u.google, email: g.email } })
+            writeLocalSession(id)
+            setUserId(id)
+            return null
+          } catch (e) {
+            return String((e as Error).message || e)
+          }
+        }
         const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.href.split('#')[0] } })
         return error?.message ?? null
       },
@@ -212,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('out')
       },
     }),
-    [mode, status, userId, user, refresh, sb, localLogin],
+    [mode, status, userId, user, refresh, sb, localLogin, ensureProfile, store],
   )
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
@@ -231,9 +248,24 @@ export function useMe(): User {
   return user
 }
 
+const framed = (() => {
+  try {
+    return window.top !== window.self
+  } catch {
+    return true
+  }
+})()
+
 export function RequireAuth({ children, allowNotOnboarded = false }: { children: ReactNode; allowNotOnboarded?: boolean }) {
   const { status, user } = useAuth()
   const loc = useLocation()
+  // the dashboard never renders inside a frame (clickjacking); only public booking pages are embeddable
+  if (framed)
+    return (
+      <div className="boot">
+        <a className="btn" href={window.location.href} target="_blank" rel="noreferrer">Open Slotwise</a>
+      </div>
+    )
   if (status === 'loading') return <div className="boot"><span className="boot-dot" /></div>
   if (status === 'out' || status === 'mfa' || !user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
   if (!user.onboarded && !allowNotOnboarded) return <Navigate to="/onboarding" replace />

@@ -1,11 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = 4174
+const PORT = Number(process.env.PW_PORT || 4174)
 
 export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 45_000,
   fullyParallel: true,
+  workers: process.env.CI ? 2 : 3,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

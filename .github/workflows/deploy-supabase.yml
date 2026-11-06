@@ -1,0 +1,69 @@
+name: Deploy Supabase
+
+# Applies supabase/migrations (supabase db push) and deploys the six Edge Functions.
+# Needs repository secrets SUPABASE_ACCESS_TOKEN (supabase.com > Account > Access Tokens),
+# SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD. Without them the job is skipped and the run stays green.
+# Function secrets (Resend, WhatsApp, Stripe...) are set once with scripts/setup-supabase.sh, not here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/deploy-supabase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PW: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$REF" ] && [ -n "$PW" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD not set, skipping the Supabase deploy."
+          fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Schema copy is in sync
+        run: cmp supabase/schema.sql supabase/migrations/001_schema.sql
+      - name: Link
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
+      - name: Database migrations
+        run: |
+          # CLI v2 targets the linked project with --linked, v3 with --remote
+          if supabase --version | grep -q '^2\.'; then T=--linked; else T=--remote; fi
+          supabase db push "$T" -p "$SUPABASE_DB_PASSWORD" --yes
+      - name: Edge Functions
+        run: |
+          # --no-verify-jwt: callers use sw_ API keys, Meta/Stripe signatures or the service key (docs/SERVER.md section 3)
+          for f in api mcp cron webhooks whatsapp stripe; do
+            supabase functions deploy "$f" --no-verify-jwt --use-api --yes
+          done

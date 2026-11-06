@@ -7,6 +7,7 @@ import { Field, Icon, Logo, TimezoneSelect, useToast } from '../components/ui'
 import { newEventType, newSchedule } from '../data/defaults'
 import { useLoad, useStore } from '../data/StoreProvider'
 import { useI18n } from '../i18n'
+import { isReservedUsername } from '../lib/id'
 import { connectGoogle, getUserEmail, isGoogleConfigured, isGoogleConnected } from '../integrations/google'
 import { slugify } from '../lib/id'
 import { CITIES } from '../lib/holidays'
@@ -41,6 +42,7 @@ export default function Onboarding() {
     if (step === 0) {
       const u = username.toLowerCase().replace(/[^a-z0-9-_]/g, '')
       if (u.length < 3) return toast(L('שם משתמש של 3 תווים לפחות, באנגלית', 'Username needs 3+ latin characters'), true)
+    if (isReservedUsername(u)) return toast(L('שם המשתמש שמור למערכת', 'That username is reserved'), true)
       if (!(await store.isUsernameFree(u, me.id))) return toast(L('שם המשתמש תפוס', 'Username is taken'), true)
       setUsername(u)
     }

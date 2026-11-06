@@ -1,0 +1,6 @@
+# Cloudflare Pages config (static SPA, no Functions).
+# Deploy: `npm run deploy:cloudflare` locally, or .github/workflows/deploy-cloudflare.yml on push to main.
+# Security headers live in public/_headers (copied to dist/ by Vite).
+name = "slotwise"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"

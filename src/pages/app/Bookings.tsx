@@ -1,5 +1,7 @@
 import { DateTime } from 'luxon'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { isGoogleConnected } from '../../integrations/google'
+import { listMyEvents, type CalendarEvent } from '../../integrations/googleIdentity'
 import { useMe } from '../../auth/AuthProvider'
 import { BookingDetails, BookingRow, NewBookingModal } from '../../components/BookingParts'
 import PageHead from '../../components/PageHead'
@@ -94,7 +96,7 @@ export default function Bookings() {
       </div>
 
       {tab === 'calendar' ? (
-        <WeekCalendar start={weekStart} onStart={setWeekStart} bookings={searched.filter((b) => b.status !== 'cancelled' && b.status !== 'rejected')} ets={ets} onOpen={setOpen} tz={me.timezone} intl={intl} dir={dir} L={L} fmtTime={fmtTime} />
+        <WeekCalendar start={weekStart} onStart={setWeekStart} bookings={searched.filter((b) => b.status !== 'cancelled' && b.status !== 'rejected')} ets={ets} onOpen={setOpen} tz={me.timezone} intl={intl} dir={dir} L={L} fmtTime={fmtTime} gcals={me.google?.conflictCalendars ?? ['primary']} />
       ) : lists[tab].length === 0 ? (
         <Empty title={q ? L('לא נמצאו תוצאות', 'No results') : L('אין כאן כלום כרגע', 'Nothing here yet')} />
       ) : (
@@ -110,10 +112,23 @@ export default function Bookings() {
   )
 }
 
-function WeekCalendar({ start, onStart, bookings, ets, onOpen, tz, intl, dir, L, fmtTime }: {
-  start: DateTime; onStart: (d: DateTime) => void; bookings: Booking[]; ets: { id: string; color: string }[]; onOpen: (b: Booking) => void; tz: string; intl: string; dir: string; L: (a: string, b: string) => string; fmtTime: (i: string, tz: string) => string
+function WeekCalendar({ start, onStart, bookings, ets, onOpen, tz, intl, dir, L, fmtTime, gcals }: {
+  start: DateTime; onStart: (d: DateTime) => void; bookings: Booking[]; ets: { id: string; color: string }[]; onOpen: (b: Booking) => void; tz: string; intl: string; dir: string; L: (a: string, b: string) => string; fmtTime: (i: string, tz: string) => string; gcals: string[]
 }) {
   const days = Array.from({ length: 7 }, (_, i) => start.plus({ days: i }))
+  const [gevents, setGevents] = useState<CalendarEvent[]>([])
+  useEffect(() => {
+    if (!isGoogleConnected()) return setGevents([])
+    let alive = true
+    const ids = new Set(bookings.map((b) => b.google?.eventId).filter(Boolean))
+    listMyEvents(gcals, start.toUTC().toISO()!, start.plus({ days: 7 }).toUTC().toISO()!)
+      .then((ev) => alive && setGevents(ev.filter((e) => !e.allDay && !ids.has(e.id))))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start.toISO(), gcals.join(',')])
   const H0 = 7
   const H1 = 22
   const hourH = 44
@@ -122,6 +137,7 @@ function WeekCalendar({ start, onStart, bookings, ets, onOpen, tz, intl, dir, L,
       <div className="row between" style={{ marginBottom: 12 }}>
         <div className="month-title">{days[0].setLocale(intl).toFormat('d LLL')} – {days[6].setLocale(intl).toFormat('d LLL yyyy')}</div>
         <div className="row" style={{ gap: 6 }}>
+          {isGoogleConnected() && <span className="chip"><span className="dot" style={{ color: 'var(--sage)' }} /> Google</span>}
           <button className="btn btn-ghost btn-sm" onClick={() => onStart(DateTime.now().setZone(tz).startOf('day').minus({ days: DateTime.now().setZone(tz).weekday % 7 }))}>{L('היום', 'Today')}</button>
           <button className="icon-btn" onClick={() => onStart(start.minus({ days: 7 }))}><Icon name={dir === 'rtl' ? 'chevR' : 'chevL'} /></button>
           <button className="icon-btn" onClick={() => onStart(start.plus({ days: 7 }))}><Icon name={dir === 'rtl' ? 'chevL' : 'chevR'} /></button>
@@ -142,6 +158,16 @@ function WeekCalendar({ start, onStart, bookings, ets, onOpen, tz, intl, dir, L,
                   <span className="tiny muted">{d.setLocale(intl).toFormat('ccc')}</span> <b className="mono">{d.day}</b>
                 </div>
                 <div className="wcal-body">
+                  {gevents.filter((e) => DateTime.fromISO(e.start).setZone(tz).hasSame(d, 'day')).map((e) => {
+                    const s = DateTime.fromISO(e.start).setZone(tz)
+                    const top = ((s.hour + s.minute / 60) - H0) * hourH
+                    const h = Math.max(20, ((Date.parse(e.end) - Date.parse(e.start)) / 3600000) * hourH - 2)
+                    return (
+                      <a key={e.id} className="wcal-gev" href={e.htmlLink} target="_blank" rel="noreferrer" style={{ top, height: h }} title={e.summary}>
+                        <span className="mono tiny">{fmtTime(e.start, tz)}</span> {e.summary}
+                      </a>
+                    )
+                  })}
                   {list.map((b) => {
                     const s = DateTime.fromISO(b.start).setZone(tz)
                     const top = ((s.hour + s.minute / 60) - H0) * hourH

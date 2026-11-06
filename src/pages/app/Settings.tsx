@@ -7,6 +7,7 @@ import type { ExportBundle } from '../../data/store'
 import { useStore, useSupabase } from '../../data/StoreProvider'
 import { uid } from '../../lib/id'
 import { useI18n } from '../../i18n'
+import { isReservedUsername } from '../../lib/id'
 import { CITIES } from '../../lib/holidays'
 import { getTheme, setTheme, type ThemePref } from '../../lib/theme'
 import type { User } from '../../lib/types'
@@ -27,6 +28,7 @@ export default function Settings() {
   const save = async () => {
     const username = u.username.toLowerCase().replace(/[^a-z0-9-_]/g, '')
     if (username.length < 3) return toast(L('שם משתמש של 3 תווים לפחות', 'Username needs 3+ characters'), true)
+    if (isReservedUsername(username)) return toast(L('שם המשתמש שמור למערכת', 'That username is reserved'), true)
     if (username !== me.username && !(await store.isUsernameFree(username, me.id))) return toast(L('שם המשתמש תפוס', 'Username is taken'), true)
     const previousUsernames = username !== me.username ? Array.from(new Set([...me.previousUsernames, me.username])).filter((x) => x !== username) : me.previousUsernames
     await store.saveUser({ ...u, username, previousUsernames, blockedEmails: blocked.split(/[\n,]/).map((x) => x.trim().toLowerCase()).filter(Boolean) })

@@ -14,8 +14,9 @@ export async function go(page: Page, hash: string) {
   await page.goto('./#' + hash)
 }
 
-export async function enterDemo(page: Page) {
+export async function enterDemo(page: Page, opts: { tour?: boolean } = {}) {
   await go(page, '/login')
+  if (!opts.tour) await page.evaluate(() => localStorage.setItem('slotwise:tour:demo-host', '1'))
   await page.locator('.demo-pass button').click()
   await expect(page.locator('.rail')).toBeVisible()
 }

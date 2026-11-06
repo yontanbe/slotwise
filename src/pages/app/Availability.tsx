@@ -60,6 +60,11 @@ export default function Availability() {
 
   const save = async () => {
     await store.saveSchedule(draft)
+    try {
+      localStorage.setItem('slotwise:hours:' + me.id, '1')
+    } catch {
+      /* ignore */
+    }
     toast(L('נשמר', 'Saved'))
   }
   const create = async () => {

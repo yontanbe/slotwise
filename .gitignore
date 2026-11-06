@@ -6,3 +6,7 @@ dist
 tsconfig.tsbuildinfo
 test-results
 playwright-report
+.env.supabase
+supabase/.temp
+supabase/.cron.local.sql
+.wrangler

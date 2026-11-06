@@ -117,7 +117,7 @@ export function openapiDocument(serverUrl: string) {
         post: {
           operationId: 'sendReminder',
           parameters: [idParam],
-          requestBody: jsonBody({ type: 'object', required: ['channel'], properties: { channel: { enum: ['email', 'whatsapp'] }, message: { type: 'string', description: 'Template with {variables}' } } }),
+          requestBody: jsonBody({ type: 'object', required: ['channel'], properties: { channel: { enum: ['email', 'whatsapp'] }, message: { type: 'string', maxLength: 500, description: 'Template with {variables}. Reminders are limited to 50 per owner per 24h (429 rate_limited).' } } }),
           responses: { '200': ok({ type: 'object' }), ...errors },
         },
       },
@@ -209,8 +209,8 @@ export function openapiDocument(serverUrl: string) {
             phone: { type: 'string' },
             timezone: { type: 'string' },
             locale: { enum: ['he', 'en'] },
-            whatsappOptIn: { type: 'boolean' },
           },
+          description: 'WhatsApp opt-in cannot be set through the API; bookings created here have attendee.whatsappOptIn = false.',
         },
         Booking: {
           type: 'object',

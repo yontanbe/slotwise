@@ -46,12 +46,15 @@ Deno.test('checkout form uses minor units, lower-case currency and deposit', () 
 Deno.test('stripe webhook marks the booking paid once', async () => {
   Deno.env.set('STRIPE_WEBHOOK_SECRET', SECRET)
   const repo = new MemoryRepo()
-  repo.seed('booking', 'owner', 'b1', { id: 'b1', status: 'accepted', history: [], payment: { status: 'unpaid', amount: 200, currency: 'ILS' } })
+  repo.seed('booking', 'owner', 'b1', {
+    id: 'b1', token: 'tok_b1_secret_0000000000', status: 'accepted', history: [],
+    payment: { status: 'unpaid', amount: 200, currency: 'ILS', checkout: { sessionId: 'cs_1', amountMinor: 20000, currency: 'ils', createdAt: '' } },
+  })
   const handler = createStripeHandler({ repo: () => repo, now: () => new Date(T * 1000) })
   const event = JSON.stringify({
     id: 'evt_1',
     type: 'checkout.session.completed',
-    data: { object: { id: 'cs_1', client_reference_id: 'b1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 20000, currency: 'ils' } },
+    data: { object: { id: 'cs_1', client_reference_id: 'b1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 20000, currency: 'ils', metadata: { booking_id: 'b1', booking_token: 'tok_b1_secret_0000000000' } } },
   })
   const send = async (sig: string) =>
     await handler(new Request('http://x/functions/v1/stripe/webhook', { method: 'POST', body: event, headers: { 'stripe-signature': sig } }))

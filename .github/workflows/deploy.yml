@@ -1,5 +1,9 @@
 name: Deploy to GitHub Pages
 
+# Optional. Runs only when the repository variable PAGES_ENABLED is 'true'
+# (Settings > Secrets and variables > Actions > Variables) and Pages is enabled with source
+# "GitHub Actions". Otherwise both jobs are skipped and main stays green. See docs/DEPLOY.md.
+
 on:
   push:
     branches: [main]
@@ -16,6 +20,7 @@ concurrency:
 
 jobs:
   build:
+    if: vars.PAGES_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

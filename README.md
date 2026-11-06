@@ -15,13 +15,19 @@ npm run test:e2e   # browser flows (Playwright)
 npm run build      # static output in dist/
 ```
 
-Deploy: enable Pages with source "GitHub Actions" (Settings > Pages). Every push to `main` runs `.github/workflows/deploy.yml`.
+Deploy: see [docs/DEPLOY.md](docs/DEPLOY.md) (Hebrew + English). Cloudflare Pages (free, private repo OK) through the Cloudflare Git integration or `.github/workflows/deploy-cloudflare.yml`; Supabase with `bash scripts/setup-supabase.sh` once, then `.github/workflows/deploy-supabase.yml`. GitHub Pages (`deploy.yml`) stays available but only runs when the repo variable `PAGES_ENABLED` is `true`.
+
+```bash
+npm run preview:cloudflare   # dist/ with the Cloudflare headers (CSP) on :8788
+npm run test:e2e:cf          # e2e suite against it, fails on any CSP violation
+npm run deploy:cloudflare    # manual deploy (after `npx wrangler login`)
+```
 
 Modes:
 
 - Demo (default): no setup. Data lives in the browser, the login has a one click bypass, a sample host is seeded at `#/yonatan`.
-- Supabase: run `supabase/schema.sql` in a new project, then set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (repo variables for the workflow, or Settings > Integrations in the app). Login becomes real (email + password, magic link, Google, Microsoft) and the bypass disappears.
-- Google Calendar / Meet / Gmail: create an OAuth Client ID (Web), add the Pages origin to Authorized JavaScript origins, enable Calendar API and Gmail API, set `VITE_GOOGLE_CLIENT_ID` or paste it in Integrations.
+- Supabase: run `bash scripts/setup-supabase.sh` (or `supabase/schema.sql` by hand) for a new project, then set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (repo variables for the workflow, or Settings > Integrations in the app). Login becomes real (email + password, magic link, Google, Microsoft) and the bypass disappears.
+- Google Calendar / Meet / Gmail: create an OAuth Client ID (Web), add the site origin (localhost:5173, slotwise.pages.dev, your domain) to Authorized JavaScript origins, enable Calendar API and Gmail API, set `VITE_GOOGLE_CLIENT_ID` or paste it in Integrations.
 
 Visibility: private for now, may become public later (see section 9).
 

@@ -269,6 +269,8 @@ export interface BookingPayment {
   link?: string
   paidAt?: ISO
   ref?: string
+  /** server only: the Stripe Checkout Session opened for this booking and what it must charge */
+  checkout?: { sessionId: string; amountMinor: number; currency: string; createdAt: ISO }
 }
 
 export interface PollOption {
@@ -473,7 +475,15 @@ export interface ApiKey {
 /* ---------------- server only ---------------- */
 export type RecordKind =
   | 'profile' | 'event_type' | 'schedule' | 'booking' | 'poll' | 'link' | 'busy' | 'outbox' | 'workflow'
-  | 'routing_form' | 'personal_link' | 'team' | 'webhook' | 'webhook_delivery' | 'api_key' | 'audit' | 'idempotency'
+  | 'routing_form' | 'personal_link' | 'team' | 'team_member' | 'webhook' | 'webhook_delivery' | 'api_key' | 'audit' | 'idempotency'
+
+/** A member's consent to host a team's event types. Row id `${teamId}:${userId}`, owned by userId. */
+export interface TeamMemberConsent {
+  teamId: string
+  userId: string
+  accepted: boolean
+  at?: ISO
+}
 
 export interface AuditEntry {
   id: string

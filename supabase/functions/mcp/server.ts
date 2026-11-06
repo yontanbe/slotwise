@@ -3,12 +3,15 @@
  * Pure request -> response with injected dependencies so it can be tested without network or DB.
  */
 import { bearer, CORS_HEADERS, json, preflight, ServiceError, stripPrefix } from '../_shared/http.ts'
+import { SlidingWindowLimiter } from '../_shared/ratelimit.ts'
 import type { AuthInfo, Caller, SlotwiseService } from '../_shared/service.ts'
 import { uid } from '../_shared/util.ts'
 
 export const PROTOCOL_VERSION = '2025-06-18'
 export const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05']
 export const SERVER_INFO = { name: 'slotwise', title: 'Slotwise', version: '0.1.0' }
+/** JSON-RPC batches are capped; each message in a batch counts against the key's rate limit. */
+export const MAX_BATCH = 20
 
 /* ---------------- JSON-RPC ---------------- */
 
@@ -88,7 +91,6 @@ const attendeeSchema = {
     phone: str('Attendee phone, international format'),
     timezone: str('Attendee IANA timezone, e.g. Asia/Jerusalem'),
     locale: { type: 'string', enum: ['he', 'en'] },
-    whatsappOptIn: { type: 'boolean', description: 'Attendee agreed to WhatsApp messages' },
   },
   additionalProperties: false,
 }
@@ -287,7 +289,7 @@ export const TOOLS: ToolDef[] = [
     title: 'Send reminder',
     description: 'Send a reminder for an upcoming booking to the attendee by email or WhatsApp (WhatsApp needs the attendee opt in).',
     inputSchema: obj(
-      { booking_id: str('Booking id'), channel: { type: 'string', enum: ['email', 'whatsapp'] }, message: str('Optional template, supports {invitee_first_name}, {event_time}, {manage_url}...') },
+      { booking_id: str('Booking id'), channel: { type: 'string', enum: ['email', 'whatsapp'] }, message: str('Optional template (max 500 chars), supports {invitee_first_name}, {event_time}, {manage_url}...', { maxLength: 500 }) },
       ['booking_id', 'channel'],
     ),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -380,6 +382,8 @@ export interface McpDeps {
   service: SlotwiseService
   /** sessionId -> client name. In memory per isolate; the name is also encoded in the id as a fallback. */
   sessions?: Map<string, { client: string; protocolVersion: string; ownerId: string }>
+  /** per API key limiter, same class and default as the REST API (120 / minute) */
+  limiter?: SlidingWindowLimiter
 }
 
 /* ---------------- handler ---------------- */
@@ -387,6 +391,7 @@ export interface McpDeps {
 export function createMcpHandler(deps: McpDeps): (req: Request) => Promise<Response> {
   const { service } = deps
   const sessions = deps.sessions ?? new Map()
+  const limiter = deps.limiter ?? new SlidingWindowLimiter(120, 60_000)
 
   function clientFor(req: Request): string {
     const sid = req.headers.get('mcp-session-id')
@@ -521,13 +526,31 @@ export function createMcpHandler(deps: McpDeps): (req: Request) => Promise<Respo
       return json(fail(null, RPC.PARSE, 'Parse error'), 400)
     }
     const ctx: { newSession?: string } = {}
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = { 'X-RateLimit-Limit': String(limiter.limit) }
+    const isRequest = (m: unknown) => !!m && typeof m === 'object' && (m as RpcRequest).id !== undefined
+    /** every request message counts once against the key (notifications are free) */
+    const limited = (m: unknown): RpcResponse | null => {
+      if (!isRequest(m)) return null
+      const rl = limiter.check(auth.apiKeyId)
+      headers['X-RateLimit-Remaining'] = String(rl.remaining)
+      if (rl.ok) return null
+      headers['Retry-After'] = String(rl.retryAfterSec)
+      return fail((m as RpcRequest).id ?? null, -32029, `Rate limit exceeded: retry after ${rl.retryAfterSec}s`, { code: 'rate_limited', retryAfter: rl.retryAfterSec })
+    }
     if (Array.isArray(parsed)) {
       if (!parsed.length) return json(fail(null, RPC.INVALID_REQUEST, 'Empty batch'), 400)
-      const out = (await Promise.all(parsed.map((m) => handle(m, req, auth, ctx)))).filter((r): r is RpcResponse => r !== null)
+      if (parsed.length > MAX_BATCH) return json(fail(null, RPC.INVALID_REQUEST, `Batch too large (max ${MAX_BATCH} messages)`), 400)
+      const out: RpcResponse[] = []
+      // sequential on purpose: one batch cannot fan out into parallel writes
+      for (const m of parsed) {
+        const r = limited(m) ?? (await handle(m, req, auth, ctx))
+        if (r) out.push(r)
+      }
       if (ctx.newSession) headers['Mcp-Session-Id'] = ctx.newSession
       return out.length ? json(out, 200, headers) : new Response(null, { status: 202, headers: { ...CORS_HEADERS, ...headers } })
     }
+    const over = limited(parsed)
+    if (over) return json(over, 429, headers)
     const res = await handle(parsed, req, auth, ctx)
     if (ctx.newSession) headers['Mcp-Session-Id'] = ctx.newSession
     return res ? json(res, 200, headers) : new Response(null, { status: 202, headers: { ...CORS_HEADERS, ...headers } })

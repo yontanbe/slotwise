@@ -10,9 +10,10 @@ import { mutate, type Repo } from '../_shared/db.ts'
 import { shabbatBlocks } from '../_shared/holidays.ts'
 import { sendEmail, sendWhatsApp, type SendResult } from '../_shared/messaging.ts'
 import type { Booking, BusyBlock, EventType, IdempotencyEntry, User, Webhook, Workflow } from '../_shared/types.ts'
-import { retryDueDeliveries, signatureHeader } from '../_shared/webhooks.ts'
+import { postOutbound, retryDueDeliveries, signatureHeader } from '../_shared/webhooks.ts'
+import type { DnsResolver } from '../_shared/ssrf.ts'
 import { bookingVars, dueSteps, renderTemplate, stepRecipient, type WfBooking, type WfStep, type WfWorkflow } from '../_shared/workflows.ts'
-import { appUrl, env, nowISO, uid } from '../_shared/util.ts'
+import { appUrl, newToken, nowISO, uid } from '../_shared/util.ts'
 
 export type CronTask = 'workflows' | 'auto_decline' | 'webhook_retry' | 'shabbat' | 'cleanup'
 export const ALL_TASKS: CronTask[] = ['workflows', 'auto_decline', 'webhook_retry', 'shabbat', 'cleanup']
@@ -21,6 +22,23 @@ export interface CronDeps {
   repo: Repo
   fetch?: typeof fetch
   now?: () => Date
+  /** DNS lookup for the SSRF check on webhook URLs (defaults to Deno.resolveDns when available) */
+  resolveDns?: DnsResolver | null
+}
+
+/**
+ * The owner's own secret for signing workflow webhook steps (profile data.workflowSecret).
+ * Generated on first use; the host sees it in their profile and verifies with it.
+ */
+export async function ownerWorkflowSecret(repo: Repo, ownerId: string): Promise<string> {
+  const rec = (await repo.find<User & { workflowSecret?: string }>('profile', { owner: ownerId, limit: 1 }))[0]
+  if (!rec) throw new Error('profile not found')
+  if (typeof rec.data.workflowSecret === 'string' && rec.data.workflowSecret.length >= 24) return rec.data.workflowSecret
+  const fresh = 'wfs_' + newToken() + newToken()
+  const out = await mutate<User & { workflowSecret?: string }>(repo, 'profile', rec.id, ownerId, (p) =>
+    typeof p.workflowSecret === 'string' && p.workflowSecret.length >= 24 ? p : { ...p, workflowSecret: fresh },
+  )
+  return out?.workflowSecret ?? fresh
 }
 
 const DAY = 86_400_000
@@ -61,19 +79,19 @@ async function runStep(deps: CronDeps, ownerId: string, user: User, b: Booking, 
     }
     case 'webhook': {
       if (!/^https:\/\//.test(to)) return { status: 'failed_invalid_url' }
+      // signed with a secret of this owner: the matching registered webhook's, else profile.workflowSecret
       const hooks = await deps.repo.find<Webhook>('webhook', { owner: ownerId })
-      const secret = hooks.find((h) => h.data.url === to)?.data.secret ?? env('WORKFLOW_WEBHOOK_SECRET')
+      const secret = hooks.find((h) => h.data.url === to)?.data.secret || (await ownerWorkflowSecret(deps.repo, ownerId))
       const { internalNotes: _n, ...booking } = b
       const payload = JSON.stringify({ id: uid(16), event: 'workflow.step', createdAt: nowISO(), data: { workflowId: w.id, stepId: step.id, trigger: w.trigger, subject, body, booking } })
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Slotwise-Event': 'workflow.step' }
-      if (secret) headers['X-Slotwise-Signature'] = await signatureHeader(secret, payload)
-      try {
-        const res = await (deps.fetch ?? fetch)(to, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(10_000) })
-        await res.body?.cancel().catch(() => {})
-        return { status: res.ok ? 'sent' : `failed_http_${res.status}` }
-      } catch (e) {
-        return { status: `failed: ${(e as Error).message}` }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Slotwise-Event': 'workflow.step',
+        'X-Slotwise-Signature': await signatureHeader(secret, payload),
       }
+      const out = await postOutbound(deps, to, headers, payload)
+      if (!out.error) return { status: 'sent' }
+      return { status: out.code ? `failed_http_${out.code}` : `failed: ${out.error}` }
     }
   }
   return { status: 'unknown_action' }

@@ -48,11 +48,15 @@ export default function Login() {
     if (auth.status === 'in') nav(next, { replace: true })
   }, [auth.status, nav, next])
 
+  const [notice, setNotice] = useState<string | null>(null)
   const run = async (fn: () => Promise<string | null>, magic = false) => {
     setBusy(true)
     const err = await fn()
     setBusy(false)
-    if (err) toast(err, true)
+    if (err === 'google_not_configured') setNotice(L('כניסה עם Google תעבוד ברגע שיוגדר Google Client ID לאתר. בינתיים אפשר להיכנס עם מייל או לדמו.', 'Google sign in works once a Google Client ID is set for this site. Meanwhile use email or the demo.'))
+    else if (err === 'microsoft_needs_backend') setNotice(L('כניסה עם Microsoft דורשת חיבור Supabase.', 'Microsoft sign in needs the Supabase backend.'))
+    else if (err === 'popup_closed' || err === 'popup_failed_to_open') toast(L('חלון ההתחברות נסגר', 'The sign in window was closed'), true)
+    else if (err) toast(err, true)
     else if (magic && auth.mode === 'supabase') setSent(true)
   }
 
@@ -128,6 +132,14 @@ export default function Login() {
                   <MsMark /> {L('המשך עם Microsoft', 'Continue with Microsoft')}
                 </button>
               </div>
+              {notice && (
+                <div className="notice small">
+                  <Icon name="plug" />
+                  <div>
+                    {notice} <Link className="link" to="/guide">{L('איך מגדירים', 'How to set it up')}</Link>
+                  </div>
+                </div>
+              )}
               <div className="or"><span>{L('או עם מייל', 'or with email')}</span></div>
               <form className="stack" onSubmit={submit} style={{ ['--gap' as string]: '14px' }}>
                 <div className="seg" style={{ alignSelf: 'flex-start' }}>

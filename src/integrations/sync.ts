@@ -321,6 +321,11 @@ async function syncOnce(store: Store, user: User, opts: { pullBusy?: boolean }):
         const fresh = await store.listBookings(user.id)
         const own = fresh.filter((b) => b.status === 'accepted' || b.status === 'pending')
         blocks = subtractIntervals(busy, own).map((x) => ({ ...x, source: 'google' as const }))
+      } else {
+        // token expired (about an hour) or disconnected: keep the last known Google busy times
+        // instead of wiping them, otherwise invitees could book over the host's Google events
+        const prev = await store.getPublicBusy(user.id, from, to).catch(() => ({ busy: [] as BusyBlock[] }))
+        blocks = prev.busy.filter((x) => x.source === 'google')
       }
       const holy: BusyBlock[] = shabbatBlocks(user.shabbat, from, to).map((x) => ({ start: x.start, end: x.end, source: 'shabbat' }))
       const ooo: BusyBlock[] = (user.outOfOffice || []).map((o) => ({
@@ -330,7 +335,11 @@ async function syncOnce(store: Store, user: User, opts: { pullBusy?: boolean }):
       }))
       const all = [...blocks, ...holy, ...ooo]
       await store.replaceBusy(user.id, all)
-      if (google) await store.saveUser({ ...user, google: { conflictCalendars: [], destinationCalendar: 'primary', sendWithGmail: false, ...user.google, lastSyncAt: nowISO() } })
+      if (google) {
+        // re-read: the host may have changed settings while this run was waiting on Google
+        const cur = (await store.getUser(user.id)) ?? user
+        await store.saveUser({ ...cur, google: { conflictCalendars: [], destinationCalendar: 'primary', sendWithGmail: false, ...cur.google, lastSyncAt: nowISO() } })
+      }
       report.busyBlocks = all.length
     } catch (e) {
       err(e)

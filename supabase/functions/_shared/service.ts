@@ -78,7 +78,8 @@ export interface CreateBookingInput {
   start: string
   end?: string
   duration?: number
-  attendee: { name: string; email: string; phone?: string; timezone?: string; locale?: 'he' | 'en'; whatsappOptIn?: boolean }
+  /** whatsappOptIn is not accepted here: only the attendee can opt in (public booking page) */
+  attendee: { name: string; email: string; phone?: string; timezone?: string; locale?: 'he' | 'en' }
   guests?: string[]
   notes?: string
   answers?: Record<string, string | string[] | boolean>
@@ -148,6 +149,9 @@ const MAX_RANGE_DAYS = 62
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$|^24:00$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+/** sendReminder: max length of a custom message and messages per owner per 24h (email + WhatsApp) */
+export const REMINDER_MAX_CHARS = 500
+export const REMINDER_DAILY_LIMIT = 50
 
 function need(c: Caller, scope: Scope) {
   if (!c.scopes.includes(scope)) throw new ServiceError('forbidden', `API key lacks the '${scope}' scope`)
@@ -322,7 +326,8 @@ export function createService(deps: ServiceDeps): SlotwiseService {
         phone: a.phone ?? '',
         timezone: validZone(a.timezone) ? a.timezone : user.timezone,
         locale: a.locale === 'en' || a.locale === 'he' ? a.locale : user.locale,
-        whatsappOptIn: a.whatsappOptIn ?? false,
+        // consent to WhatsApp can only come from the attendee, never from an API / MCP caller
+        whatsappOptIn: false,
       },
       guests: input.guests ?? [],
       notes: input.notes ?? '',
@@ -671,10 +676,18 @@ export function createService(deps: ServiceDeps): SlotwiseService {
     async sendReminder(c, input) {
       need(c, 'write')
       if (input?.channel !== 'email' && input?.channel !== 'whatsapp') invalid("channel must be 'email' or 'whatsapp'")
+      if (input.message !== undefined && (typeof input.message !== 'string' || input.message.length > REMINDER_MAX_CHARS)) {
+        invalid(`message must be a string of at most ${REMINDER_MAX_CHARS} characters`)
+      }
       const rec = await bookingRec(c, input.bookingId, true)
       const b = rec.data
       if (!ACTIVE.includes(b.status)) throw new ServiceError('conflict', `booking is ${b.status}`)
       if (Date.parse(b.end) < now().getTime()) throw new ServiceError('conflict', 'booking is in the past')
+      // per owner quota across channels, counted from the audit log (written only by the server)
+      const since = now().getTime() - 86_400_000
+      const sent = (await repo.find<AuditEntry>('audit', { owner: c.ownerId, in: { 'data->>action': ['reminder.email', 'reminder.whatsapp'] } }))
+        .filter((r) => Date.parse(r.data.at) > since).length
+      if (sent >= REMINDER_DAILY_LIMIT) throw new ServiceError('rate_limited', `daily reminder limit reached (${REMINDER_DAILY_LIMIT} per 24h)`)
       const user = await profile(c.ownerId)
       const host = { name: user.name, email: user.email, phone: user.phone, timezone: user.timezone, locale: user.locale }
       const vars = bookingVars(b, host, appUrl())

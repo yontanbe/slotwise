@@ -37,6 +37,7 @@ export default function Developer() {
   }), [me.id])
   const [newKey, setNewKey] = useState<string | null>(null)
   const [keyName, setKeyName] = useState('')
+  const [keyScope, setKeyScope] = useState<'rw' | 'r'>('r')
   const [hook, setHook] = useState<Webhook | null>(null)
   const fn = functionsUrl()
   const apiBase = fn ? `${fn}/api/v1` : `https://<project>.supabase.co/functions/v1/api/v1`
@@ -44,7 +45,7 @@ export default function Developer() {
 
   const createKey = async () => {
     const key = 'sw_' + randomKey(32)
-    const k: ApiKey = { id: uid(), ownerId: me.id, name: keyName || L('מפתח', 'Key'), prefix: key.slice(0, 8), hash: await sha256Hex(key), scopes: ['read', 'write'], createdAt: nowISO() }
+    const k: ApiKey = { id: uid(), ownerId: me.id, name: keyName || L('מפתח', 'Key'), prefix: key.slice(0, 8), hash: await sha256Hex(key), scopes: keyScope === 'rw' ? ['read', 'write'] : ['read'], createdAt: nowISO() }
     await store.saveKind('api_key', k)
     setNewKey(key)
     setKeyName('')
@@ -74,6 +75,10 @@ export default function Developer() {
           )}
           <div className="row" style={{ gap: 8 }}>
             <input className="input input-sm" style={{ maxWidth: 240 }} placeholder={L('שם (למשל Claude)', 'Name (e.g. Claude)')} value={keyName} onChange={(e) => setKeyName(e.target.value)} />
+            <select className="select input-sm" style={{ width: 'auto' }} value={keyScope} onChange={(e) => setKeyScope(e.target.value as 'r' | 'rw')} aria-label={L('הרשאות', 'Scopes')}>
+              <option value="r">{L('קריאה בלבד', 'Read only')}</option>
+              <option value="rw">{L('קריאה וכתיבה', 'Read and write')}</option>
+            </select>
             <button className="btn btn-line btn-sm" onClick={createKey}><Icon name="plus" size={14} /> {L('יצירת מפתח', 'Create key')}</button>
           </div>
           <table className="data">
@@ -82,6 +87,7 @@ export default function Developer() {
                 <tr key={k.id}>
                   <td>{k.name}</td>
                   <td className="mono small ltr">{k.prefix}…</td>
+                  <td><span className="chip">{k.scopes.includes('write') ? L('קריאה וכתיבה', 'Read & write') : L('קריאה', 'Read')}</span></td>
                   <td className="small muted">{k.lastUsedAt ? L('שימוש אחרון ', 'Last used ') + fmtDate(k.lastUsedAt, me.timezone, { day: 'numeric', month: 'short' }) : L('לא בשימוש', 'Never used')}</td>
                   <td style={{ textAlign: 'end' }}><button className="icon-btn" onClick={async () => { if (window.confirm(L('לבטל את המפתח?', 'Revoke this key?'))) await store.deleteKind('api_key', k.id) }}><Icon name="trash" size={14} /></button></td>
                 </tr>

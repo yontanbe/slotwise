@@ -15,3 +15,7 @@ export function slugify(s: string): string {
     .replace(/^-+|-+$/g, '')
   return latin || uid(6)
 }
+
+/** Path segments the router uses; they can never be usernames. */
+export const RESERVED_USERNAMES = ['app', 'login', 'guide', 'onboarding', 'team', 'b', 'p', 'd', 'api', 'admin', 'embed', 'forms', 'settings', 'help', 'support', 'www', 'slotwise']
+export const isReservedUsername = (u: string) => RESERVED_USERNAMES.includes(u.toLowerCase())

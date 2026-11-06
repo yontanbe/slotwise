@@ -445,7 +445,7 @@ export default function Booker({ profile, eventType: et, reschedule, linkToken, 
                 const full = await store.getUser(host.id)
                 if (full) runSync(store, full, { pullBusy: false }).catch(() => {})
               }
-              postToParent('booked', { start: b.start, end: b.end, event: et.slug, status: b.status })
+              postToParent('booked', { event: et.slug, status: b.status })
               if (et.redirectUrl && !reschedule && /^https?:\/\//i.test(et.redirectUrl)) {
                 try {
                   const u = new URL(et.redirectUrl)
@@ -623,7 +623,7 @@ function BookingForm({
         ? await store.rescheduleByToken(reschedule.token, slot.start, slot.end, reason)
         : await store.createBooking({
             ownerId: assignment.ownerId,
-            coHostIds: assignment.coHostIds,
+            coHostIds: et.teamId || store.mode === 'local' ? assignment.coHostIds : [],
             teamId: et.teamId || undefined,
             personalLinkId: personal?.id,
             routingResponseId,

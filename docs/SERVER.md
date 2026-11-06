@@ -15,6 +15,8 @@ Shared code: `_shared/service.ts` (service layer used by api and mcp), `db.ts` (
 
 ## 1. Database
 
+Shortcut: `bash scripts/setup-supabase.sh` does sections 1 to 3 (`supabase db push` applies `migrations/001_schema.sql` and `002_server.sql`), see [DEPLOY.md](DEPLOY.md). By hand:
+
 1. Run `supabase/schema.sql` (if not already).
 2. Edit `supabase/migrations/002_server.sql`: replace `<PROJECT_REF>`. Store the service role key in Vault once:
    ```sql
@@ -25,7 +27,7 @@ Shared code: `_shared/service.ts` (service layer used by api and mcp), `db.ts` (
 ## 2. Secrets
 
 ```sh
-supabase secrets set APP_URL=https://<user>.github.io/slotwise/ \
+supabase secrets set APP_URL=https://slotwise.pages.dev/ \
   DB_WEBHOOK_SECRET=$(openssl rand -hex 24) \
   RESEND_API_KEY=re_... RESEND_FROM="Slotwise <noreply@yourdomain>" \
   WHATSAPP_TOKEN=... WHATSAPP_PHONE_NUMBER_ID=... WHATSAPP_APP_SECRET=... WHATSAPP_VERIFY_TOKEN=$(openssl rand -hex 16) \

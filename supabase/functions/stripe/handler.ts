@@ -5,9 +5,9 @@
  */
 import { mutate, type Repo } from '../_shared/db.ts'
 import { errorResponse, json, preflight, stripPrefix } from '../_shared/http.ts'
-import { checkoutForm, fromMinorUnits, verifyStripeSignature } from '../_shared/stripe.ts'
+import { chargeAmount, checkoutForm, fromMinorUnits, toMinorUnits, verifyStripeSignature } from '../_shared/stripe.ts'
 import type { Booking, EventType } from '../_shared/types.ts'
-import { appUrl, env } from '../_shared/util.ts'
+import { appUrl, env, timingSafeEqual } from '../_shared/util.ts'
 
 export interface StripeDeps {
   repo: () => Repo
@@ -37,13 +37,17 @@ export function createStripeHandler(deps: StripeDeps) {
     const repo = deps.repo()
     const rec = (await repo.find<Booking>('booking', { eq: { 'data->>token': token }, limit: 1 }))[0]
     if (!rec) return errorResponse('not_found', 'booking not found')
-    const booking = rec.data
+    // the row id is authoritative (data.id is client data); the token is checked again in the webhook
+    const booking = { ...rec.data, id: rec.id }
     if (!['accepted', 'pending'].includes(booking.status)) return errorResponse('conflict', `booking is ${booking.status}`)
     if (booking.payment?.status === 'paid') return errorResponse('conflict', 'already paid')
-    const et = (await repo.get<EventType>('event_type', booking.eventTypeId))?.data
+    const etRec = await repo.get<EventType>('event_type', booking.eventTypeId)
+    // the price comes from the booking owner's event type (or a team type they host)
+    const et = etRec && (etRec.owner_id === rec.owner_id || (etRec.data.hosts ?? []).some((h) => h.userId === rec.owner_id)) ? etRec.data : null
     if (!et) return errorResponse('not_found', 'event type not found')
     const form = checkoutForm(booking, et, appUrl())
-    if (!form) return errorResponse('invalid_request', 'this event type has no price')
+    const charge = chargeAmount(et)
+    if (!form || !charge) return errorResponse('invalid_request', 'this event type has no price')
     const res = await (deps.fetch ?? fetch)('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
@@ -60,6 +64,13 @@ export function createStripeHandler(deps: StripeDeps) {
       console.error('stripe checkout', res.status, out?.error?.message)
       return errorResponse('upstream_error', out?.error?.message ?? `stripe error ${res.status}`)
     }
+    if (typeof out?.id !== 'string') return errorResponse('upstream_error', 'stripe returned no session')
+    // remember the session and the amount it must collect; the webhook only accepts this session
+    const checkoutInfo = { sessionId: out.id, amountMinor: toMinorUnits(charge.amount, charge.currency), currency: charge.currency, createdAt: nowDate().toISOString() }
+    await mutate<Booking>(repo, 'booking', rec.id, rec.owner_id, (b) => ({
+      ...b,
+      payment: { ...(b.payment ?? { status: 'unpaid', amount: charge.amount, currency: charge.currency.toUpperCase() }), checkout: checkoutInfo },
+    }))
     return json({ id: out.id, url: out.url })
   }
 
@@ -80,12 +91,22 @@ export function createStripeHandler(deps: StripeDeps) {
     }
     const s = event.data?.object
     if (!s || s.payment_status !== 'paid') return json({ received: true, ignored: 'not paid yet' })
+    const ignore = (reason: string) => {
+      console.warn('stripe webhook ignored', event.id, s.id, reason)
+      return json({ received: true, ignored: reason })
+    }
     const bookingId = s.client_reference_id || s.metadata?.booking_id
-    if (!bookingId) return json({ received: true, ignored: 'no booking reference' })
+    if (!bookingId) return ignore('no booking reference')
     const repo = deps.repo()
     const rec = await repo.get<Booking>('booking', bookingId)
-    if (!rec) return json({ received: true, ignored: 'booking not found' })
-    const currency = (s.currency ?? rec.data.payment?.currency ?? 'usd').toLowerCase()
+    if (!rec) return ignore('booking not found')
+    const token = s.metadata?.booking_token ?? ''
+    if (!rec.data.token || !timingSafeEqual(token, rec.data.token)) return ignore('booking token mismatch')
+    const expected = rec.data.payment?.checkout
+    if (!expected || expected.sessionId !== s.id) return ignore('checkout session mismatch')
+    const currency = (s.currency ?? '').toLowerCase()
+    if (currency !== expected.currency.toLowerCase()) return ignore('currency mismatch')
+    if (typeof s.amount_total !== 'number' || s.amount_total < expected.amountMinor) return ignore('amount below expected')
     const ref = s.payment_intent || s.id
     const at = nowDate().toISOString()
     const updated = await mutate<Booking>(repo, 'booking', rec.id, rec.owner_id, (b) => {

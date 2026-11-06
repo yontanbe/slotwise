@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useMe } from '../../auth/AuthProvider'
 import { BookingDetails, BookingRow } from '../../components/BookingParts'
 import PageHead from '../../components/PageHead'
+import { markShared, SetupChecklist } from '../../components/Onboarding'
 import { Empty, Icon, useCopy } from '../../components/ui'
 import { useLoad, useStore } from '../../data/StoreProvider'
 import { useI18n } from '../../i18n'
@@ -52,11 +53,13 @@ export default function Home() {
         eyebrow={now.setLocale(intl).toLocaleString({ weekday: 'long', day: 'numeric', month: 'long' })}
         title={<>{greet}, {first}.<br /><span className="muted-title">{L('זה הלוח שלך.', 'Here is your schedule.')}</span></>}
         actions={
-          <button className="btn btn-accent" onClick={() => copy(appUrl(`/${me.username}`))}>
+          <button className="btn btn-accent" onClick={() => { copy(appUrl(`/${me.username}`)); markShared(me.id) }}>
             <Icon name="link" size={16} /> {L('העתקת הקישור שלי', 'Copy my link')}
           </button>
         }
       />
+
+      <SetupChecklist />
 
       <section className="stats rise">
         <div>
@@ -105,13 +108,13 @@ export default function Home() {
           <div>
             <h3 style={{ marginBottom: 6 }}>{L('קישורים לשיתוף', 'Share links')}</h3>
             <div className="share-list">
-              {ets.filter((e) => !e.hidden).slice(0, 5).map((e) => (
+              {ets.filter((e) => !e.hidden && !e.teamId).slice(0, 5).map((e) => (
                 <div key={e.id} className="share-item" style={{ ['--c' as string]: e.color }}>
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{e.title}</div>
                     <div className="tiny muted ltr ellipsis">/{me.username}/{e.slug}</div>
                   </div>
-                  <button className="icon-btn" onClick={() => copy(appUrl(`/${me.username}/${e.slug}`))} aria-label={L('העתקה', 'Copy')}>
+                  <button className="icon-btn" onClick={() => { copy(appUrl(`/${me.username}/${e.slug}`)); markShared(me.id) }} aria-label={L('העתקה', 'Copy')}>
                     <Icon name="copy" size={15} />
                   </button>
                   <a className="icon-btn" href={appUrl(`/${me.username}/${e.slug}`)} target="_blank" rel="noreferrer" aria-label={L('פתיחה', 'Open')}>

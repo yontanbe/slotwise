@@ -6,6 +6,7 @@
  */
 import { mutate, type Repo, type Rec } from './db.ts'
 import type { Booking, Poll, RoutingForm, ServerWebhookDelivery, Webhook, WebhookEvent } from './types.ts'
+import { BLOCKED_DESTINATION, checkOutboundUrl, defaultResolver, type DnsResolver, NETWORK_ERROR } from './ssrf.ts'
 import { hmacSha256Hex, timingSafeEqual, uid } from './util.ts'
 
 export const WEBHOOK_EVENTS: WebhookEvent[] = [
@@ -122,38 +123,63 @@ export interface WebhookDeps {
   repo: Repo
   fetch?: typeof fetch
   now?: () => Date
+  /** DNS lookup for the SSRF check; defaults to Deno.resolveDns when available. null disables DNS checks. */
+  resolveDns?: DnsResolver | null
+}
+
+/**
+ * POST to a host-configured URL: SSRF policy first (https, no internal hosts or private addresses),
+ * no redirects followed, and only a generic error string is kept (never upstream details).
+ */
+export async function postOutbound(
+  deps: { fetch?: typeof fetch; resolveDns?: DnsResolver | null },
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<{ code?: number; error?: string }> {
+  const why = await checkOutboundUrl(url, deps.resolveDns === undefined ? defaultResolver() : deps.resolveDns)
+  if (why) {
+    console.warn('outbound blocked', why)
+    return { error: BLOCKED_DESTINATION }
+  }
+  try {
+    const res = await (deps.fetch ?? fetch)(url, { method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(10_000) })
+    await res.body?.cancel().catch(() => {})
+    return res.ok ? { code: res.status } : { code: res.status, error: `HTTP ${res.status}` }
+  } catch {
+    return { error: NETWORK_ERROR }
+  }
 }
 
 export function deliveryBody(d: Pick<ServerWebhookDelivery, 'id' | 'event' | 'at' | 'payload'>): string {
   return JSON.stringify({ id: d.id, event: d.event, createdAt: d.at, data: d.payload })
 }
 
-/** One HTTP attempt. Mutates and persists the delivery record. */
-export async function attemptDelivery(deps: WebhookDeps, hook: Webhook, d: ServerWebhookDelivery, isNew: boolean): Promise<ServerWebhookDelivery> {
+/**
+ * One HTTP attempt. Mutates and persists the delivery record. `row` is the stored row (id, owner_id)
+ * for retries: the row columns are authoritative, never data.id / data.ownerId.
+ */
+export async function attemptDelivery(
+  deps: WebhookDeps,
+  hook: Webhook,
+  d: ServerWebhookDelivery,
+  isNew: boolean,
+  row?: { id: string; owner_id: string },
+): Promise<ServerWebhookDelivery> {
   const now = deps.now?.() ?? new Date()
   const body = deliveryBody(d)
-  const f = deps.fetch ?? fetch
-  let code: number | undefined
-  let error: string | undefined
-  try {
-    const res = await f(hook.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Slotwise-Webhooks/1',
-        'X-Slotwise-Event': d.event,
-        'X-Slotwise-Delivery': d.id,
-        'X-Slotwise-Signature': await signatureHeader(hook.secret, body, Math.floor(now.getTime() / 1000)),
-      },
-      body,
-      signal: AbortSignal.timeout(10_000),
-    })
-    code = res.status
-    await res.body?.cancel().catch(() => {})
-    if (!res.ok) error = `HTTP ${res.status}`
-  } catch (e) {
-    error = String((e as Error).message ?? e)
-  }
+  const { code, error } = await postOutbound(
+    deps,
+    hook.url,
+    {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Slotwise-Webhooks/1',
+      'X-Slotwise-Event': d.event,
+      'X-Slotwise-Delivery': d.id,
+      'X-Slotwise-Signature': await signatureHeader(hook.secret, body, Math.floor(now.getTime() / 1000)),
+    },
+    body,
+  )
   d.attempts += 1
   d.code = code
   d.at = d.at || now.toISOString()
@@ -173,7 +199,7 @@ export async function attemptDelivery(deps: WebhookDeps, hook: Webhook, d: Serve
   }
   if (isNew) await deps.repo.insert('webhook_delivery', d.ownerId, d.id, d)
   else {
-    const rec = await deps.repo.get<ServerWebhookDelivery>('webhook_delivery', d.id, d.ownerId)
+    const rec = await deps.repo.get<ServerWebhookDelivery>('webhook_delivery', row?.id ?? d.id, row?.owner_id ?? d.ownerId)
     if (rec) await deps.repo.update(rec, d)
   }
   return d
@@ -200,19 +226,19 @@ export async function dispatchEvent(deps: WebhookDeps, ev: DerivedEvent): Promis
 export async function retryDueDeliveries(deps: WebhookDeps): Promise<{ retried: number; dead: number }> {
   const now = (deps.now?.() ?? new Date()).getTime()
   const due = (await deps.repo.find<ServerWebhookDelivery>('webhook_delivery', { eq: { 'data->>status': 'retrying' } }))
-    .map((r: Rec<ServerWebhookDelivery>) => r.data)
-    .filter((d) => !d.nextAttemptAt || Date.parse(d.nextAttemptAt) <= now)
+    .filter((r: Rec<ServerWebhookDelivery>) => !r.data.nextAttemptAt || Date.parse(r.data.nextAttemptAt) <= now)
   let retried = 0
   let dead = 0
-  for (const d of due) {
-    const hook = await deps.repo.get<Webhook>('webhook', d.webhookId, d.ownerId)
+  for (const rec of due) {
+    // row columns are authoritative: the delivery belongs to rec.owner_id and is stored at rec.id
+    const d: ServerWebhookDelivery = { ...rec.data, id: rec.id, ownerId: rec.owner_id }
+    const hook = await deps.repo.get<Webhook>('webhook', String(d.webhookId ?? ''), rec.owner_id)
     if (!hook || !hook.data.active) {
-      const rec = await deps.repo.get<ServerWebhookDelivery>('webhook_delivery', d.id, d.ownerId)
-      if (rec) await deps.repo.update(rec, { ...d, status: 'failed', lastError: 'webhook removed or inactive', deadAt: new Date(now).toISOString() })
+      await deps.repo.update(rec, { ...d, status: 'failed', lastError: 'webhook removed or inactive', deadAt: new Date(now).toISOString() })
       dead++
       continue
     }
-    const out = await attemptDelivery(deps, hook.data, d, false)
+    const out = await attemptDelivery(deps, hook.data, d, false, rec)
     retried++
     if (out.status === 'failed') dead++
   }
