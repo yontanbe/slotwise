@@ -6,5 +6,5 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: { chunkSizeWarningLimit: 1200 },
-  test: { environment: 'node' },
+  test: { environment: 'node', include: ['src/**/*.test.ts'] },
 } as any)
