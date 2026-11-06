@@ -2,7 +2,26 @@
 
 The complete scheduling platform. Everything Calendly and Cal.com do, plus the best ideas from SavvyCal, Chili Piper, Reclaim, Motion, Doodle and Acuity, with Google Calendar, Gmail, WhatsApp and MCP built in from day one. Hebrew (RTL) and English from the start.
 
-Status: planning. This README is the product spec. No code yet.
+Status: v0.1 runs as a static app on GitHub Pages (demo mode with localStorage, or Supabase). This README is the product spec; the build plan is in [docs/PLAN.md](docs/PLAN.md).
+
+## Run it
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # availability engine + Shabbat / holiday tests
+npm run test:sql   # Supabase schema and RPCs against an in-process Postgres
+npm run build      # static output in dist/
+```
+
+Deploy: enable Pages with source "GitHub Actions" (Settings > Pages). Every push to `main` runs `.github/workflows/deploy.yml`.
+
+Modes:
+
+- Demo (default): no setup. Data lives in the browser, the login has a one click bypass, a sample host is seeded at `#/yonatan`.
+- Supabase: run `supabase/schema.sql` in a new project, then set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (repo variables for the workflow, or Settings > Integrations in the app). Login becomes real (email + password, magic link, Google, Microsoft) and the bypass disappears.
+- Google Calendar / Meet / Gmail: create an OAuth Client ID (Web), add the Pages origin to Authorized JavaScript origins, enable Calendar API and Gmail API, set `VITE_GOOGLE_CLIENT_ID` or paste it in Integrations.
+
 Visibility: private for now, may become public later (see section 9).
 
 ---

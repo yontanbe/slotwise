@@ -1,0 +1,82 @@
+:root {
+  --paper: #f6efe1;
+  --paper-2: #eee4cf;
+  --card: #fbf7ee;
+  --ink: #14213d;
+  --ink-2: #33405e;
+  --ink-3: #6b6f80;
+  --rule: rgba(20, 33, 61, 0.16);
+  --rule-2: rgba(20, 33, 61, 0.32);
+  --accent: #e4572e;
+  --accent-2: #c9441d;
+  --accent-wash: rgba(228, 87, 46, 0.1);
+  --on-accent: #fff8ef;
+  --sage: #7fa087;
+  --sage-wash: rgba(127, 160, 135, 0.18);
+  --mustard: #d9a441;
+  --ok: #3e7f5a;
+  --danger: #b83a1e;
+  --rail: #14213d;
+  --on-rail: #f6efe1;
+  --shadow: 0 1px 0 rgba(20, 33, 61, 0.06), 0 8px 24px -12px rgba(20, 33, 61, 0.25);
+  --shadow-lift: 0 2px 0 rgba(20, 33, 61, 0.08), 0 18px 40px -18px rgba(20, 33, 61, 0.35);
+  --img-blend: multiply;
+  --grain-opacity: 0.35;
+
+  --display: 'Frank Ruhl Libre', 'Times New Roman', serif;
+  --sans: 'IBM Plex Sans Hebrew', 'Assistant', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 16px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #0f1628;
+    --paper-2: #0b1120;
+    --card: #162037;
+    --ink: #f1e9d8;
+    --ink-2: #cfc6b3;
+    --ink-3: #8f93a3;
+    --rule: rgba(241, 233, 216, 0.13);
+    --rule-2: rgba(241, 233, 216, 0.28);
+    --accent: #f06a43;
+    --accent-2: #ff8460;
+    --accent-wash: rgba(240, 106, 67, 0.14);
+    --on-accent: #1a0d07;
+    --sage-wash: rgba(127, 160, 135, 0.16);
+    --rail: #0a101e;
+    --on-rail: #f1e9d8;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --shadow-lift: 0 2px 0 rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+    --img-blend: normal;
+    --grain-opacity: 0.18;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #0f1628;
+  --paper-2: #0b1120;
+  --card: #162037;
+  --ink: #f1e9d8;
+  --ink-2: #cfc6b3;
+  --ink-3: #8f93a3;
+  --rule: rgba(241, 233, 216, 0.13);
+  --rule-2: rgba(241, 233, 216, 0.28);
+  --accent: #f06a43;
+  --accent-2: #ff8460;
+  --accent-wash: rgba(240, 106, 67, 0.14);
+  --on-accent: #1a0d07;
+  --sage-wash: rgba(127, 160, 135, 0.16);
+  --rail: #0a101e;
+  --on-rail: #f1e9d8;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lift: 0 2px 0 rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+  --img-blend: normal;
+  --grain-opacity: 0.18;
+  color-scheme: dark;
+}
