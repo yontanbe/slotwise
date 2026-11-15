@@ -840,7 +840,7 @@ button.tt-row {
   transform: scale(1.06);
 }
 .month-day.selected {
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   box-shadow: 0 0 0 4px var(--accent-wash);
 }

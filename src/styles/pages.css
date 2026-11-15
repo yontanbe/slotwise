@@ -822,7 +822,7 @@ tr.poll-total td {
 }
 .rail-badge {
   margin-inline-start: auto;
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   font-family: var(--mono);
   font-size: 11px;
@@ -1281,7 +1281,7 @@ tr.poll-total td {
   border-inline-start: 1px solid var(--rule);
 }
 .wcal-day.today .wcal-dh b {
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   border-radius: 50%;
   width: 28px;
@@ -2017,7 +2017,7 @@ tr.poll-total td {
   color: var(--paper);
 }
 .mini-month .sel {
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--on-accent);
   box-shadow: 0 0 0 4px var(--accent-wash);
 }
